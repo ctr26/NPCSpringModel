@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Ckeated on Mon Jan  4 14:36:41 2021
+Created on Mon Jan  4 14:36:41 2021
 
 @author: maria
 """
@@ -19,14 +19,6 @@ def pol2cart(rho, phi):
     x = rho * np.cos(phi)
     y = rho * np.sin(phi)
     return(x, y)
-
-#### Function to write circulant matrices. TODO: replace with scipy.linalg.circulant
-def circulant2(inputarray):
-    n = len(inputarray)
-    outputmatrix = np.zeros((n,n))    
-    for i in range(n,0,-1): # counting down from 16 to 1
-        outputmatrix[n-i,:] = np.append(inputarray[i:],inputarray[:i])
-    return outputmatrix
 
 def hexadecagonspring(y, t, Lrest, la, K, ka, fext, d, n):
 
@@ -69,13 +61,12 @@ l6 = np.sqrt(2*lr**2 - 2*lr**2 * np.cos(6*np.pi/8))
 l7 = np.sqrt(2*lr**2 - 2*lr**2 * np.cos(7*np.pi/8))
 ld = np.sqrt(2*lr**2 - 2*lr**2 * np.cos(8*np.pi/8)) # 7 corners skipped (opposites connected "diameter" )
 
-#Larray = np.array([0, le, l2, l3, l4, l5, l6, l7, ld, l7, l6, l5, l4, l3, l2, le])
+
 Lrest = circulant([0, le, l2, l3, l4, l5, l6, l7, ld, l7, l6, l5, l4, l3, l2, le])
 la = np.sqrt(2*lr**2 - 2*lr**2 * np.cos(8*np.pi/8))/2 # length to center 
 
 ### constants of springs. numbers correspond to the numbering in lengths 
 ke = k2 = k3 = k4 = k5 = k6 = k7 = kd = 1 # spring constants 
-#Karray = np.array([0, ke, k2, k3, k4, k5, k6, k7, kd, k7, k6, k5, k4, k3, k2, ke])
 K = circulant([0, ke, k2, k3, k4, k5, k6, k7, kd, k7, k6, k5, k4, k3, k2, ke])
 ka = 0.3
 
