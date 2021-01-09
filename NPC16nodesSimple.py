@@ -152,8 +152,6 @@ else:
         segments = np.concatenate([points[:-1],points[1:]], axis = 1)
         
     
-        
-    
         lc = LineCollection(segments, cmap = 'viridis', norm=norm)
         lc.set_array(normspeeds[:,int(0.5*i)])
         lc.set_linewidth(2)
