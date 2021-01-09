@@ -14,6 +14,7 @@ import matplotlib.pyplot as plt
 from matplotlib.collections import LineCollection
 from matplotlib.colors import ListedColormap, BoundaryNorm
 
+print("hello world")
 def pol2cart(rho, phi):
     '''Function transforms polar to cartesian coordinates'''
     x = rho * np.cos(phi)
