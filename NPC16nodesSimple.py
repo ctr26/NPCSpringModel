@@ -50,29 +50,30 @@ def hexadecagonspring(y, t, Lrest, la, K, ka, fext, d, n):
     dxdt = np.concatenate((v.flatten(), allaccarray.flatten()))                                                                
     return dxdt
 
-### lengths of the spring
+### lengths of the springs
 le = 1  # side lengths hexadecagon
 lr = (le * np.sin(7/16*np.pi))/np.sin(1/8*np.pi) # radius hexadecagon
-l2 = np.sqrt(2*lr**2 - 2*lr**2 * np.cos(2*np.pi/8)) # length one corner skipped
+l2 = np.sqrt(2*lr**2 - 2*lr**2 * np.cos(2*np.pi/8)) # length one corner skipped (= 2 nodes away)
 l3 = np.sqrt(2*lr**2 - 2*lr**2 * np.cos(3*np.pi/8)) # length two corners skipped
 l4 = np.sqrt(2*lr**2 - 2*lr**2 * np.cos(4*np.pi/8)) # length three corners skipped
-l5 = np.sqrt(2*lr**2 - 2*lr**2 * np.cos(5*np.pi/8))
+l5 = np.sqrt(2*lr**2 - 2*lr**2 * np.cos(5*np.pi/8)) # ...
 l6 = np.sqrt(2*lr**2 - 2*lr**2 * np.cos(6*np.pi/8))
 l7 = np.sqrt(2*lr**2 - 2*lr**2 * np.cos(7*np.pi/8))
 ld = np.sqrt(2*lr**2 - 2*lr**2 * np.cos(8*np.pi/8)) # 7 corners skipped (opposites connected "diameter" )
 
 
-Lrest = circulant([0, le, l2, l3, l4, l5, l6, l7, ld, l7, l6, l5, l4, l3, l2, le])
-la = np.sqrt(2*lr**2 - 2*lr**2 * np.cos(8*np.pi/8))/2 # length to center 
+# Lrest is the circulant matrix of resting edge lengths 
+Lrest = circulant([0, le, l2, l3, l4, l5, l6, l7, ld, l7, l6, l5, l4, l3, l2, le]) 
+la = np.sqrt(2*lr**2 - 2*lr**2 * np.cos(8*np.pi/8))/2 # length of spring to centeral anchor 
 
-### constants of springs. numbers correspond to the numbering in lengths 
+### spring constants. numbers correspond to the numbering of the lengths lengths 
 ke = k2 = k3 = k4 = k5 = k6 = k7 = kd = 1 # spring constants 
 K = circulant([0, ke, k2, k3, k4, k5, k6, k7, kd, k7, k6, k5, k4, k3, k2, ke])
-ka = 0.3
+ka = 0.3 # to anchor
 
 # Other parameters
 d = 1 # damping 
-n = 6 # maximum distant neighbour to connect on each side 
+n = 6 # maximum distant neighbour to connect on each side.
 
 # External forces 
 fext = np.array([[5,0.]     ,   [0.,0.] ,   [0.,0.] ,   [0.,0.],
