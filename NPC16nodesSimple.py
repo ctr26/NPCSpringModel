@@ -12,7 +12,6 @@ from scipy.integrate import odeint
 from scipy.linalg import circulant
 import matplotlib.pyplot as plt
 from matplotlib.collections import LineCollection
-from matplotlib.colors import ListedColormap, BoundaryNorm
 
 print("hello world")
 def pol2cart(rho, phi):
@@ -52,19 +51,30 @@ def hexadecagonspring(y, t, Lrest, la, K, ka, fext, d, n):
     return dxdt
 
 ### lengths of the spring
-le = 1  # side lengths hexadecagon
-lr = (le * np.sin(7/16*np.pi))/np.sin(1/8*np.pi) # radius hexadecagon
-l2 = np.sqrt(2*lr**2 - 2*lr**2 * np.cos(2*np.pi/8)) # length one corner skipped
-l3 = np.sqrt(2*lr**2 - 2*lr**2 * np.cos(3*np.pi/8)) # length two corners skipped
-l4 = np.sqrt(2*lr**2 - 2*lr**2 * np.cos(4*np.pi/8)) # length three corners skipped
-l5 = np.sqrt(2*lr**2 - 2*lr**2 * np.cos(5*np.pi/8))
-l6 = np.sqrt(2*lr**2 - 2*lr**2 * np.cos(6*np.pi/8))
-l7 = np.sqrt(2*lr**2 - 2*lr**2 * np.cos(7*np.pi/8))
-ld = np.sqrt(2*lr**2 - 2*lr**2 * np.cos(8*np.pi/8)) # 7 corners skipped (opposites connected "diameter" )
+la = 1 # radius hexadecagon (= length to anchor); set to 1
 
+# Generate cartesian coordinates of the Hexadecagon using its polar coordinates 
+angle = 0.
+cartc = np.zeros(32)
+
+for i in range(0,32,2): # skip every other entry to populate it with y-coords
+    x, y = pol2cart(la,angle)
+    cartc[i] = x
+    cartc[i+1] = y
+    angle += 0.125*np.pi
+    
+cart2D = cartc.reshape(16,2) # reshape so that x and y coords are in separate columns. TODO 
+le = np.linalg.norm(cart2D[0,:]-cart2D[1,:]) # distance between node 0 and 1
+l2 = np.linalg.norm(cart2D[0,:]-cart2D[2,:])
+l3 = np.linalg.norm(cart2D[0,:]-cart2D[3,:])
+l4 = np.linalg.norm(cart2D[0,:]-cart2D[4,:])
+l5 = np.linalg.norm(cart2D[0,:]-cart2D[5,:])
+l6 = np.linalg.norm(cart2D[0,:]-cart2D[6,:])
+l7 = np.linalg.norm(cart2D[0,:]-cart2D[7,:])
+ld = np.linalg.norm(cart2D[0,:]-cart2D[8,:])
 
 Lrest = circulant([0, le, l2, l3, l4, l5, l6, l7, ld, l7, l6, l5, l4, l3, l2, le])
-la = np.sqrt(2*lr**2 - 2*lr**2 * np.cos(8*np.pi/8))/2 # length to center 
+
 
 ### constants of springs. numbers correspond to the numbering in lengths 
 ke = k2 = k3 = k4 = k5 = k6 = k7 = kd = 1 # spring constants 
@@ -81,16 +91,7 @@ fext = np.array([[5,0.]     ,   [0.,0.] ,   [0.,0.] ,   [0.,0.],
                  [-5.5,0.]    ,   [0.,0.] ,   [0.,0.] ,   [0.,0.],
                  [0.0,0.]   ,   [0.,0.] ,   [0.,0.] ,   [0.,0.]])
 
-# Generate cartesian coordinates of the Hexadecagon using its polar coordinates 
-angle = 0.
-cartc = np.zeros(32)
 
-for i in range(0,32,2): # skip every other entry to populate it with y-coords
-    x, y = pol2cart(lr,angle)
-    cartc[i] = x
-    cartc[i+1] = y
-    angle += 0.125*np.pi
-    
 
 # starting values and timepoints 
 y0 = np.concatenate((cartc, np.zeros(32))) # last 32 entries are starting velocities 
@@ -101,9 +102,7 @@ sol16 = odeint(hexadecagonspring, y0, t, args=(Lrest, la, K, ka, fext, d, n)) #T
 solplot = sol16
 
 
-
-# plotting
-#### Plotting
+#### Plotting ####################################################################
 fig, axs = plt.subplots(2, 1 ,figsize = (10, 15))
 axs = axs.ravel()
 
