@@ -16,7 +16,7 @@ from matplotlib.collections import LineCollection
 import math
 import seaborn as sns
 
-
+print("test")
 def pol2cart(rho, phi):
     '''Function transforms polar to cartesian coordinates'''
     x = rho * np.cos(phi)
