@@ -9,6 +9,7 @@ Created on Mon Jan  4 14:36:41 2021
 
 import numpy as np
 from scipy.integrate import odeint
+from scipy.integrate import solve_ivp
 from scipy.linalg import circulant
 import matplotlib.pyplot as plt
 from matplotlib.collections import LineCollection
@@ -61,7 +62,7 @@ def octagonspring(y, t, Lrest, la, K, ka, fext, d, n):
     return dxdt
 
 # Generate cartesian coordinates of the Hexadecagon using its polar coordinates 
-la = 1 # radius hexadecagon (= length to anchor); set to 1
+la = 1. # radius hexadecagon (= length to anchor); set to 1
 angle = 0.
 cartc = np.zeros(16)
 
@@ -78,39 +79,45 @@ l3 = np.linalg.norm(cart2D[0,:]-cart2D[3,:])
 ld = np.linalg.norm(cart2D[0,:]-cart2D[4,:])
 
 
-Lrest = circulant([0, le, l2, l3, ld, l3, l2, le])
+Lrest = circulant([0., le, l2, l3, ld, l3, l2, le])
 
 
 ### constants of springs. numbers correspond to the numbering in lengths 
-ke = k2 = k3 = kd = 1 # spring constants 
-K = circulant([0, ke, k2, k3, kd, k3, k2, ke])
-ka = 1
+ke = k2 = k3 = 1. # spring constants 
+kd = 0.5
+K = circulant([0., ke, k2, k3, kd, k3, k2, ke])
+ka = 0.5
 
 # Other parameters
-d = 1 # damping 
-n = 2 # maximum distant neighbour to connect on each side 
+d = 2.5 # damping 
+n = 3 # maximum distant neighbour to connect on each side 
 
 ### Sample forces
 #finalmag = -20.16112
-finalmag = -2
+finalmag = -8
 fnorm = np.zeros((8,2))
 angle = 0.
 unitvector = np.array([1.,0.])
 for i in range(8):
-    norm = np.random.normal(0,1)
+    norm = np.random.normal(0,0.1)
     norm = 1 # TODO remove
     fnorm[i] = rotate((norm*unitvector), angle)
     angle += 0.25*np.pi
+
 
 #Determine total magnitude of distortions
 initialmag = 0.
 for i in range(len(fnorm)):
     initialmag += np.linalg.norm(fnorm[i])
 
-
+assert(initialmag!=0)
 magmultiplier = finalmag/initialmag
 
 fnorm = magmultiplier*fnorm
+
+# plt.scatter([0,0],[0,0])
+# plt.scatter(fnorm[:,0], fnorm[:,1])
+# plt.show()
 
 # External forces, set manually if needed 
 fmanual = np.array([[0.,0.]     ,   [0.0,0.0] ,   [0.,0.] ,   [0.,0.2],
@@ -119,11 +126,16 @@ fmanual = np.array([[0.,0.]     ,   [0.0,0.0] ,   [0.,0.] ,   [0.,0.2],
 
 # starting values and timepoints 
 y0 = np.concatenate((cartc, np.zeros(16))) # last 16 entries are starting velocities 
-t_end = 100
-t = np.linspace(0, t_end, t_end*100)
+t_end = 200
+t = np.linspace(0, t_end, t_end*10)
+sol8 = odeint(octagonspring, y0, t, args=(Lrest, la, K, ka, fnorm, d, n)) #TODO: Try solve_ivp instead. try out adaptive timesteps
+#scipy.integrate.solve_ivp(fun, t_span, y0, method='RK45', t_eval=None, dense_output=False, events=None, vectorized=False, args=None, **options)
 
-sol16 = odeint(octagonspring, y0, t, args=(Lrest, la, K, ka, fnorm, d, n)) #TODO: try out adaptive timesteps 
-solplot = sol16
+#### Trying to switch to solve_ivp
+
+#sol8 = solve_ivp(octagonspring, [0,200], y0, method='RK45', t_eval=None, dense_output=False, events=None, vectorized=False, args=(Lrest, la, K, ka, fnorm, d, n))
+
+solplot = sol8
 
 
 #### Plotting ####################################################################
@@ -138,7 +150,7 @@ axs[0].set(xlabel = 't')
 axs[0].legend(loc = 'best')
 
 axs[1].plot(solplot[-1, np.append([i for i in range(0,16,2)],0)], solplot[-1, np.append([i for i in range(1,16,2)],1)],  
-  linestyle = ":", marker = "o", color="white", markerfacecolor = "darkgray", markersize = 10)
+  linestyle = ":", marker = "o", color="white", markerfacecolor = "black", markersize = 15)
 
 colourcode = True
 if (colourcode ==False):
