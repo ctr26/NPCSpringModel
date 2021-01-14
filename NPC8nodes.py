@@ -15,7 +15,6 @@ import matplotlib.pyplot as plt
 from matplotlib.collections import LineCollection
 import math
 
-print("hello world")
 
 def pol2cart(rho, phi):
     '''Function transforms polar to cartesian coordinates'''
@@ -35,7 +34,7 @@ def rotate(point, angle): # From StackOverflow
     qy = oy + math.sin(angle) * (px - ox) + math.cos(angle) * (py - oy)
     return qx, qy
 
-def octagonspring(y, t, Lrest, la, K, ka, fext, d, n):
+def octagonspring(t, y, Lrest, la, K, ka, fext, d, n):
 
     x0x, x0y, x1x, x1y, x2x, x2y, x3x, x3y, x4x, x4y, x5x, x5y, x6x, x6y, x7x, x7y, v0x, v0y, v1x, v1y, v2x, v2y, v3x, v3y, v4x, v4y, v5x, v5y, v6x, v6y, v7x, v7y = y
 
@@ -117,10 +116,6 @@ magmultiplier = finalmag/initialmag
 
 fnorm = magmultiplier*fnorm
 
-# plt.scatter([0,0],[0,0])
-# plt.scatter(fnorm[:,0], fnorm[:,1])
-# plt.show()
-
 # External forces, set manually if needed 
 fmanual = np.array([[0.,0.]     ,   [0.0,0.0] ,   [0.,0.] ,   [0.,0.2],
                  [0.,0.]   ,   [0.,0.] ,   [0.,0.] ,   [0.,0.]])
@@ -128,26 +123,21 @@ fmanual = np.array([[0.,0.]     ,   [0.0,0.0] ,   [0.,0.] ,   [0.,0.2],
 
 # starting values and timepoints 
 y0 = np.concatenate((cartc, np.zeros(16))) # last 16 entries are starting velocities 
-t_end = 200
-t = np.linspace(0, t_end, t_end*10)
-sol8 = odeint(octagonspring, y0, t, args=(Lrest, la, K, ka, fnorm, d, n)) #TODO: Try solve_ivp instead. try out adaptive timesteps
-#scipy.integrate.solve_ivp(fun, t_span, y0, method='RK45', t_eval=None, dense_output=False, events=None, vectorized=False, args=None, **options)
 
-#### Trying to switch to solve_ivp
-
-#sol8 = solve_ivp(octagonspring, [0,200], y0, method='RK45', t_eval=None, dense_output=False, events=None, vectorized=False, args=(Lrest, la, K, ka, fnorm, d, n))
-
-solplot = sol8
-
+sol8 = solve_ivp(octagonspring, [0,200], y0, method='RK45', t_eval=None, dense_output=False, events=None, vectorized=False, args=(Lrest, la, K, ka, fnorm, d, n))
 
 #### Plotting ####################################################################
+
+solplot = sol8.y.T
+tplot = sol8.t
+
 fig, axs = plt.subplots(2, 1 ,figsize = (10, 15))
 axs = axs.ravel()
 
 # x and y position over time 
 label = ["x0x", "x0y", "x1x", "x1y", "x2x", "x2y", "x3x", "x3y", "x4x", "x4y", "x5x", "x5y", "x6x", "x6y", "x7x", "x7y"]
 for i in range(16):
-    axs[0].plot(t, solplot[:, i], label = label[i])
+    axs[0].plot(tplot, solplot[:, i], label = label[i])
 axs[0].set(xlabel = 't')
 axs[0].legend(loc = 'best')
 
