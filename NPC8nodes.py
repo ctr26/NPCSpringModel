@@ -14,6 +14,7 @@ from scipy.linalg import circulant
 import matplotlib.pyplot as plt
 from matplotlib.collections import LineCollection
 import math
+import seaborn as sns
 
 
 def pol2cart(rho, phi):
@@ -87,7 +88,7 @@ Lrest = circulant([0., le, l2, l3, ld, l3, l2, le])
 ke = k2 = k3 = 1. # spring constants 
 kd = 0.5
 K = circulant([0., ke, k2, k3, kd, k3, k2, ke])
-ka = 0.5
+ka = 1
 
 # Other parameters
 d = 2.5 # damping 
@@ -95,15 +96,19 @@ n = 3 # maximum distant neighbour to connect on each side
 
 ### Sample forces
 #finalmag = -20.16112
-finalmag = -8
+finalmag = -10
 fnorm = np.zeros((8,2))
 angle = 0.
 unitvector = np.array([1.,0.])
+
 for i in range(8):
-    norm = np.random.normal(0,0.1)
+#    norm = np.random.normal(0,0.1)
     norm = 1 # TODO remove
     fnorm[i] = rotate((norm*unitvector), angle)
     angle += 0.25*np.pi
+
+fnorm = np.array([[1.,0],[np.sqrt(2)/2, np.sqrt(2)/2],[0,1],[-np.sqrt(2)/2,np.sqrt(2)/2],[-1,0],[-np.sqrt(2)/2,-np.sqrt(2)/2],[0,-1],[np.sqrt(2)/2,-np.sqrt(2)/2]]) #TODO remove
+
 
 
 #Determine total magnitude of distortions
@@ -124,13 +129,14 @@ fmanual = np.array([[0.,0.]     ,   [0.0,0.0] ,   [0.,0.] ,   [0.,0.2],
 # starting values and timepoints 
 y0 = np.concatenate((cartc, np.zeros(16))) # last 16 entries are starting velocities 
 
-sol8 = solve_ivp(octagonspring, [0,200], y0, method='RK45', t_eval=None, dense_output=False, events=None, vectorized=False, args=(Lrest, la, K, ka, fnorm, d, n))
-
+sol8 = solve_ivp(octagonspring, [0,200], y0, method='LSODA', t_eval=None, dense_output=False, events=None, vectorized=False, args=(Lrest, la, K, ka, fnorm, d, n))
+# Radau, BDF, LSODA
 #### Plotting ####################################################################
+
 
 solplot = sol8.y.T
 tplot = sol8.t
-
+ax = sns.heatmap(solplot)
 fig, axs = plt.subplots(2, 1 ,figsize = (10, 15))
 axs = axs.ravel()
 
