@@ -60,6 +60,7 @@ def octagonspring(t, y, Lrest, la, K, ka, fext, d, n):
         accarray = fext[i] + accarray - d*v[i] # external force and damping
         allaccarray[i] = accarray 
 
+    if (v < (np.finfo(float).eps)
     dxdt = np.concatenate((v.flatten(), allaccarray.flatten()))                                                                
     return dxdt
 
