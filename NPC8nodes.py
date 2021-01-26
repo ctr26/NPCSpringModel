@@ -15,7 +15,10 @@ import matplotlib.pyplot as plt
 from matplotlib.collections import LineCollection
 import math
 import seaborn as sns
+from mpmath import mp
 
+# decimal digits
+mp.dps = 17
 
 def pol2cart(rho, phi):
     '''Function transforms polar to cartesian coordinates'''
@@ -43,13 +46,13 @@ def octagonspring(t, y, Lrest, la, K, ka, fext, d, n):
     x = np.array([[x0x, x0y], [x1x, x1y], [x2x, x2y], [x3x, x3y], [x4x, x4y], [x5x, x5y], [x6x, x6y], [x7x, x7y]]) 
     v = np.array([[v0x, v0y], [v1x, v1y], [v2x, v2y], [v3x, v3y], [v4x, v4y], [v5x, v5y], [v6x, v6y], [v7x, v7y]]) 
 
-    anc = np.array([0., 0.]) # spacial coordinates of anchor node 
+    anc = np.array([0., 0.]) * mp.mpf(1) # spacial coordinates of anchor node 
           
-    allaccarray = np.zeros((8,2)) # array for accelerations of node 0 - 7
+    allaccarray = np.zeros((8,2)) * mp.mpf(1) # array for accelerations of node 0 - 7
     
     for i in range(8): # i indicates the reference node 
         
-        accarray = np.array([0., 0.]) # initiate acceleration array for each node i 
+        accarray = np.array([0., 0.]) * mp.mpf(1) # initiate acceleration array for each node i 
         
         for j in [k for k in range(-n, n+1) if k != 0]: # j is neighbour nodes -n to +n relative to i, skipping 0 (0=i)
             
@@ -60,22 +63,24 @@ def octagonspring(t, y, Lrest, la, K, ka, fext, d, n):
         accarray = fext[i] + accarray - d*v[i] # external force and damping
         allaccarray[i] = accarray 
 
-    if (v < (np.finfo(float).eps)
+    v[(abs(v) <= 2E-5)] = 0 
     dxdt = np.concatenate((v.flatten(), allaccarray.flatten()))                                                                
     return dxdt
 
 # Generate cartesian coordinates of the Hexadecagon using its polar coordinates 
-la = 1. # radius hexadecagon (= length to anchor); set to 1
+la = mp.mpf(1) # radius hexadecagon (= length to anchor); set to 1
 angle = 0.
-cartc = np.zeros(16)
+# cartc = np.zeros(16)
 
-for i in range(0,16,2): # skip every other entry to populate it with y-coords
-    x, y = pol2cart(la,angle)
-    cartc[i] = x
-    cartc[i+1] = y
-    angle += 0.25*np.pi
-    
+# for i in range(0,16,2): # skip every other entry to populate it with y-coords
+#     x, y = pol2cart(la,angle)
+#     cartc[i] = x
+#     cartc[i+1] = y
+#     angle += 0.25*np.pi
+   
+cartc = mp.mpf(1) * np.array([1.,0,np.sqrt(2)/2, np.sqrt(2)/2,0,1,-np.sqrt(2)/2,np.sqrt(2)/2,-1,0,-np.sqrt(2)/2,-np.sqrt(2)/2,0,-1,np.sqrt(2)/2,-np.sqrt(2)/2])
 cart2D = cartc.reshape(8,2) # reshape so that x and y coords are in separate columns.  
+
 le = np.linalg.norm(cart2D[0,:]-cart2D[1,:]) # distance between node 0 and 1
 l2 = np.linalg.norm(cart2D[0,:]-cart2D[2,:])
 l3 = np.linalg.norm(cart2D[0,:]-cart2D[3,:])
@@ -86,30 +91,29 @@ Lrest = circulant([0., le, l2, l3, ld, l3, l2, le])
 
 
 ### constants of springs. numbers correspond to the numbering in lengths 
-ke = k2 = k3 = 1. # spring constants 
-kd = 0.5
+ke = k2 = k3 = mp.mpf(1) # spring constants 
+kd = mp.mpf(0.5)
 K = circulant([0., ke, k2, k3, kd, k3, k2, ke])
-ka = 1
+ka = mp.mpf(1)
 
 # Other parameters
-d = 2.5 # damping 
+d = mp.mpf(1) # damping 
 n = 3 # maximum distant neighbour to connect on each side 
 
 ### Sample forces
 #finalmag = -20.16112
-finalmag = -10
-fnorm = np.zeros((8,2))
-angle = 0.
-unitvector = np.array([1.,0.])
+finalmag = -20
+# fnorm = np.zeros((8,2))
+# angle = 0.
+# unitvector = np.array([1.,0.])
 
-for i in range(8):
-#    norm = np.random.normal(0,0.1)
-    norm = 1 # TODO remove
-    fnorm[i] = rotate((norm*unitvector), angle)
-    angle += 0.25*np.pi
+# for i in range(8):
+#     #norm = np.random.normal(0,0.1)
+#     norm = 1 # TODO remove
+#     fnorm[i] = rotate((norm*unitvector), angle)
+#     angle += 0.25*np.pi
 
-fnorm = np.array([[1.,0],[np.sqrt(2)/2, np.sqrt(2)/2],[0,1],[-np.sqrt(2)/2,np.sqrt(2)/2],[-1,0],[-np.sqrt(2)/2,-np.sqrt(2)/2],[0,-1],[np.sqrt(2)/2,-np.sqrt(2)/2]]) #TODO remove
-
+fnorm = mp.mpf(1) * np.array([[1.,0],[np.sqrt(2)/2, np.sqrt(2)/2],[0,1],[-np.sqrt(2)/2,np.sqrt(2)/2],[-1,0],[-np.sqrt(2)/2,-np.sqrt(2)/2],[0,-1],[np.sqrt(2)/2,-np.sqrt(2)/2]]) #TODO remove
 
 
 #Determine total magnitude of distortions
@@ -119,25 +123,25 @@ for i in range(len(fnorm)):
 
 assert(initialmag!=0)
 magmultiplier = finalmag/initialmag
-
 fnorm = magmultiplier*fnorm
 
 # External forces, set manually if needed 
-fmanual = np.array([[0.,0.]     ,   [0.0,0.0] ,   [0.,0.] ,   [0.,0.2],
-                 [0.,0.]   ,   [0.,0.] ,   [0.,0.] ,   [0.,0.]])
+# fmanual = np.array([[0.,0.]     ,   [0.0,0.0] ,   [0.,0.] ,   [0.,0.2],
+#                  [0.,0.]   ,   [0.,0.] ,   [0.,0.] ,   [0.,0.]])
 
 
 # starting values and timepoints 
-y0 = np.concatenate((cartc, np.zeros(16))) # last 16 entries are starting velocities 
+y0 = np.concatenate((cartc, (np.zeros(16) * mp.mpf(1)))) # last 16 entries are starting velocities 
 
-sol8 = solve_ivp(octagonspring, [0,200], y0, method='LSODA', t_eval=None, dense_output=False, events=None, vectorized=False, args=(Lrest, la, K, ka, fnorm, d, n))
+sol8 = solve_ivp(octagonspring, [0,20000], y0, t_eval=[i/10 for i in range(0,200000)], args=(Lrest, la, K, ka, fnorm, d, n))
 # Radau, BDF, LSODA
+#  t_eval=[i/10 for i in range(0,2000)],
 #### Plotting ####################################################################
 
 
 solplot = sol8.y.T
 tplot = sol8.t
-ax = sns.heatmap(solplot)
+#ax = sns.heatmap(solplot)
 fig, axs = plt.subplots(2, 1 ,figsize = (10, 15))
 axs = axs.ravel()
 
