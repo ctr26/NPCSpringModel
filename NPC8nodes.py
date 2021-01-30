@@ -6,40 +6,33 @@ Created on Mon Jan  4 14:36:41 2021
 @author: maria
 """
 
-
 import numpy as np
-#from scipy.integrate import odeint
 from scipy.integrate import solve_ivp
 from scipy.linalg import circulant
 import matplotlib.pyplot as plt
 from matplotlib.collections import LineCollection
-#import seaborn as sns
+from warnings import warn
 import timeit
 
-def pol2cart(rho, phi):
-    '''Function transforms polar to cartesian coordinates'''
-    x = rho * np.cos(phi)
-    y = rho * np.sin(phi)
-    return(x, y)
+### Parameters
+symmetry = 10
+d = 0.5 # damping 
+n = 10 # n maximum distant neighbour to connect on each side 
+magnitude = 0
+### 
 
-def octagonspring(t, y, Lrest, la, K, ka, randf, d, n):
+def NPC(t, y, Lrest, la, K, ka, randf, d, n, symmetry = 8):
     ''''''
-    x0x, x0y, x1x, x1y, x2x, x2y, x3x, x3y, x4x, x4y, x5x, x5y, x6x, x6y, x7x, x7y, v0x, v0y, v1x, v1y, v2x, v2y, v3x, v3y, v4x, v4y, v5x, v5y, v6x, v6y, v7x, v7y = y 
-    x = np.array([[x0x, x0y], [x1x, x1y], [x2x, x2y], [x3x, x3y], [x4x, x4y], [x5x, x5y], [x6x, x6y], [x7x, x7y]]) 
-    v = np.array([[v0x, v0y], [v1x, v1y], [v2x, v2y], [v3x, v3y], [v4x, v4y], [v5x, v5y], [v6x, v6y], [v7x, v7y]]) 
+    v = np.reshape(y[2*symmetry:], (symmetry, 2))
+    x = np.reshape(y[:2*symmetry], (symmetry, 2))
 
-    anc = np.array([0., 0.]) # spacial coordinates of anchor node   
-    symmetry = 8
-    F = np.zeros((symmetry,2)) # Forces
+    anc = np.array([0., 0.]) # coordinates of anchor node   
+    F = np.zeros((symmetry, 2)) # Forces
     
-##### TODO: test 
-
-    for i in range(symmetry):
+    for i in range(symmetry): # TODO test
         F[i] = randf[i]*x[i] / np.linalg.norm([x[i], anc])
 
-######    
-      
-    allaccarray = np.zeros((symmetry,2)) # array for accelerations of node 0 - 7
+    allaccarray = np.zeros((symmetry, 2)) # array for accelerations of node 0 - 7
     
     for i in range(symmetry): # i indicates the reference node        
         accarray = np.array([0., 0.]) # initiate acceleration array for each node i 
@@ -55,147 +48,192 @@ def octagonspring(t, y, Lrest, la, K, ka, randf, d, n):
     dxdt = np.concatenate((v.flatten(), allaccarray.flatten()))                                                                
     return dxdt
 
-# Generate cartesian coordinates of the octagon using its polar coordinates 
-la = 1. # radius octagon (= length to anchor); set to 1
-angle = 0.
-cartc = np.zeros(16) 
 
-for i in range(0,16,2): # skip every other entry to populate it with y-coords
-    x, y = pol2cart(la,angle)
-    cartc[i] = x
-    cartc[i+1] = y
-    angle += 0.25*np.pi
+def Pol2cart(rho, phi):
+    '''Function transforms polar to cartesian coordinates'''
+    x = rho * np.cos(phi)
+    y = rho * np.sin(phi)
+    return(x, y)
 
+def Initialcoords(la, symmetry = symmetry, angleoffset = 0): 
+# Generate cartesian coordinates of the octagon using its polar coordinates #TODO real-data coordinates
+    angle = 0.
+    cartc = np.zeros(2*symmetry) 
+    
+    for i in range(0,2*symmetry,2): # skip every other entry to populate it with y-coords
+        x, y = Pol2cart(la,angle)
+        cartc[i] = x
+        cartc[i+1] = y
+        angle += 2*np.pi/symmetry
+    cartc2D = cartc.reshape(symmetry,2)
+    return cartc, cartc2D
+
+la = 1
+la2 = 1.05
+cartc, cart2D = Initialcoords(la = la, angleoffset = 0)
+cartc2, cart22D = Initialcoords(la = la2, angleoffset = 2*np.pi/(3*symmetry))
 #cartc = np.array([1.,0,np.sqrt(2)/2, np.sqrt(2)/2,0,1,-np.sqrt(2)/2,np.sqrt(2)/2,-1,0,-np.sqrt(2)/2,-np.sqrt(2)/2,0,-1,np.sqrt(2)/2,-np.sqrt(2)/2]) #TODO remove
 
-cart2D = cartc.reshape(8,2) # reshape so that x and y coords are in separate columns.  
+def Springlengths(cart2D, symmetry): # TODO generalize to different symmetries 
+        l = np.zeros(int(np.floor(symmetry/2)))
+        for i in range(len(l)):
+            l[i] = np.linalg.norm(cart2D[0,:]-cart2D[(i+1),:])
+        
+        if(symmetry%2 == 0): #if symmetry is even
+            Lrest = circulant(np.append(0, np.append(l, np.flip(l[:-1]))))
+        else: # if symmetry is odd
+            Lrest = circulant(np.append(0, [l, np.flip(l)]))
+        return Lrest
 
-le = np.linalg.norm(cart2D[0,:]-cart2D[1,:]) # distance between node i and i+1
-l2 = np.linalg.norm(cart2D[0,:]-cart2D[2,:])
-l3 = np.linalg.norm(cart2D[0,:]-cart2D[3,:])
-ld = np.linalg.norm(cart2D[0,:]-cart2D[4,:])
+def Springconstants(symmetry):
+    k = np.ones(int(np.floor(symmetry/2)))
+    if(symmetry%2 == 0): #if symmetry is even
+        k[-1] = 0.5
+        K = circulant(np.append(0, np.append(k, np.flip(k[:-1]))))
+    else:
+        K = circulant(np.append(0, [k, np.flip(k)]))
+    return K
 
-Lrest = circulant([0., le, l2, l3, ld, l3, l2, le])
+def Forces(dist = ("normal", "exp"), rings = 2, magnitude = 1):
+    finalmag = magnitude # total magnitude
+    randf = np.zeros(symmetry) # magnitude of radial forces acting on nodes 0-8
+    randf2 = np.zeros(symmetry)
+    
+    if (dist == "normal"):
+        for i in range(symmetry): randf[i] = np.random.normal(0,0.1)
+    elif (dist == "exp"):
+        for i in range(symmetry): randf[i] = np.random.exponential()
+    
+    if (rings == 2):
+            for i in range(len(randf2)):
+                randf2[i] = randf[i] + np.random.normal(0, 0)
+    
+    #Determine total magnitude of distortions
+    initialmag = sum(abs(randf)) + sum(abs(randf2))
+    if(initialmag != 0): 
+        randf = finalmag/initialmag * randf
+        randf2 = finalmag/initialmag * randf2
+    return randf, randf2
 
-### spring constants. indices correspond to the indices of spring lengths 
-ke = k2 = k3 = 1 #TODO: Pick smarter spring constants? 
-kd = 0.5 # diagonal spring at 0.5 k, because there will be 2 of them (ktotal = k1+k2 for parallel springs)
-K = circulant([0., ke, k2, k3, kd, k3, k2, ke])
+Lrest = Springlengths(cart2D, symmetry = symmetry)
+Lrest2 = Springlengths(cart22D, symmetry = symmetry)
+K = Springconstants(symmetry = symmetry)
 ka = 0.5
 
-# Other parameters
-d = 1 # damping 
-n = 2 # n maximum distant neighbour to connect on each side 
+if(n > symmetry/2):
+    n = int(np.floor(symmetry/2))
+    warn("Selected number of neighbours n too large. n has been set to " + str(n) + ".")
 
-### Forces
-finalmag = 1 # total magnitude
-randf = np.zeros(8) # magnitude of radial forces acting on nodes 0-8
 
-for i in range(8): 
-    #randf[i] = np.random.exp()
-    randf[i] = np.random.normal(0,0.1)
 
-#Determine total magnitude of distortions
-initialmag = sum(abs(randf))
-if(initialmag != 0): randf = finalmag/initialmag * randf
+randf, randf2 = Forces("normal", magnitude = magnitude)
+
 
 # starting coordinates and velocities of nodes 
-y0 = np.concatenate((cartc, np.zeros(16))) # last 16 entries are starting velocities 
+y0 = np.concatenate((cartc, np.zeros(2*symmetry))) # last 16 entries are starting velocities 
+y02 = np.concatenate((cartc2, np.zeros(2*symmetry)))
 
 start = timeit.default_timer()
 
 # Solve ODE
-sol8 = solve_ivp(octagonspring, [0,100], y0, method='RK45', args=(Lrest, la, K, ka, randf, d, n))
+sol = solve_ivp(NPC, [0,100], y0, method='RK45', args=(Lrest, la, K, ka, randf, d, n, symmetry))
+sol2 = solve_ivp(NPC, [0,100], y02, method='RK45', args=(Lrest2, la2, K, ka, randf2, d, n, symmetry))
 
 stop = timeit.default_timer()
 print('Time: ', stop - start) 
 
 #### Plotting ####################################################################
 colourcode = True # Trajectories colourcoded by velocity, or monochrome. 
-solplot = sol8.y.T # solutions for plotting
-tplot = sol8.t # timesteps for plotting
+solplot = sol.y.T # solutions for plotting
+tplot = sol.t # timesteps for plotting
 #ax = sns.heatmap(solplot) 
 plt.rcParams.update({'font.size': 25})
 fig, axs = plt.subplots(2, 1, figsize = (13, 20))
 #plt.title("magnitude: " + str(finalmag) + " damping: " + str(d) + " n: " + str(n))
 axs = axs.ravel()
 
+solplot2 = sol2.y.T
+solplot3 = np.reshape(solplot,(len(solplot),2*symmetry,2))
+
 # x and y position over time 
-label = ["x0", "y0", "x1", "y1", "x2", "y2", "x3", "y3", "x4", "y4", "x5", "y5", "x6", "y6", "x7", "y7"]
-for i in range(16):
-    axs[0].plot(tplot, solplot[:, i], label = label[i])
+label = ["x", "y"]
+for i in range(2*symmetry):
+    axs[0].plot(tplot, solplot[:, i], label = label[i%2] + str(i))
 axs[0].set(xlabel = 't (a.u.)')
-axs[0].legend(loc = 'best')
+#axs[0].legend(loc = 'best')
 
 
-## Nodes at final position with trajectory and connecting springs 
-# Just the Nodes
-axs[1].plot(solplot[-1, [i for i in range(0,16,2)]], solplot[-1, [i for i in range(1,16,2)]],  
-   linestyle = "", marker = "o", color="gray", markerfacecolor = "black", markersize = 25, zorder = 50)
-
-# Anchor, and connection to anchor
-axs[1].plot([0,0], [0,0], marker = "o", color = "lightgray", markersize = 15)
-for i in range(0,16,2):
-    axs[1].plot((solplot[-1,i],0),(solplot[-1,i+1],0),
-    linestyle = ":", marker = "", color="lightgray")
-
-# Connecting springs. n is the number of neighbours that are connected both cw or ccw
-if (n >= 1):
-    axs[1].plot(solplot[-1, np.append([i for i in range(0,16,2)],0)], 
-                solplot[-1, np.append([i for i in range(1,16,2)],1)],  
-                linestyle = ":", marker = "", color="gray")
-
-if (n >= 2):
-    axs[1].plot(solplot[-1, (0,4,8,12,0)], 
-                solplot[-1, (1,5,9,13,1)], linestyle = ":", marker = "", color = "gray") 
+def plotting(solplot, n = n, colourcode = True, colourbar = True, mainmarkercolor = "black", symmetry = symmetry):
+    solplot2D = np.reshape(solplot,(len(solplot),2*symmetry,2))
     
-    axs[1].plot(solplot[-1, (2,6,10,14,2)], 
-                solplot[-1, (3,7,11,15,3)], linestyle = ":", marker = "", color = "gray") 
+    # Nodes at last timestep
+    axs[1].plot(solplot2D[-1, :symmetry, 0], solplot2D[-1,:symmetry,1], 
+    linestyle = "", marker = "o", color="gray", markerfacecolor = mainmarkercolor, markersize = 25, zorder = 50)
+    
+    # Anchor springs
+    axs[1].plot([0,0], [0,0], marker = "o", color = "lightgray", markersize = 15)
+    for i in range(0, symmetry):
+        axs[1].plot((solplot2D[-1,i,0], 0), (solplot2D[-1,i,1], 0),
+        linestyle = ":", marker = "", color="lightgray")   
+        
+    # Radial springs TODO: fix 
+    for ni in range(1, n+1):
+        if(symmetry%ni == 0): # if the total number of nodes is a multiple of ni, the nodes will be devided into ni graphs
+            for i in range(ni):
+                connect = np.append([j for j in range(i, symmetry, ni)], i)
+                axs[1].plot(solplot2D[-1, connect, 0],solplot2D[-1, connect, 1], linestyle = ":", marker = "", color="gray")
+        else: # otherwise, all nodes are connected by one path TODO: WRONG!
+            connectopen = np.array([i%symmetry for i in range(0, ni*symmetry, ni)])
+            rep = int(len(connectopen)/len(set(connectopen)))
+            if (rep==1):
+                connect = np.append(connectopen, 0)
+                axs[1].plot(solplot2D[-1, connect, 0],solplot2D[-1, connect, 1], linestyle = ":", marker = "", color="gray")
+            else:
+                print(rep)
+                for k in range(rep):
+                    connect = np.append([i%symmetry for i in range(k, int(ni*symmetry/rep), ni)], k)
+                    axs[1].plot(solplot2D[-1, connect, 0],solplot2D[-1, connect, 1], linestyle = ":", marker = "", color="red")
 
-if (n >= 3):
-     axs[1].plot(solplot[-1, (0,6,12,2,8,14,4,10,0)], 
-                 solplot[-1, (1,7,13,3,9,15,5,11,1)], linestyle = ":", marker = "", color = "gray")   
+ 
+    if (colourcode): # Colourcoded trajectory
+        ### colourcoding velocities
+        pos = solplot[:,:2*symmetry] # positions over time
+        vel = solplot[:,2*symmetry:] # velocities over time
+        normvel = np.zeros((np.shape(vel)[0], symmetry)) #shape: [steps,nodes]
+        
+        for node in range(0, 2*symmetry-1, 2):    
+            for step in range(np.shape(vel)[0]):
+                 normvel[step,int(0.5*node)] = np.linalg.norm([vel[step,node], vel[step,node+1]])
+        
+        norm = plt.Normalize(normvel.min(), normvel.max()) 
+        
+        #####trajectory colorcoded for velocity
+        for i in range(0, 2*symmetry-1, 2):  
+            points = pos[:,(i,i+1)].reshape(-1,1,2) # for node i
+            segments = np.concatenate([points[:-1],points[1:]], axis = 1)
+               
+            lc = LineCollection(segments, cmap = 'viridis', norm=norm, zorder = 100)
+            lc.set_array(normvel[:,int(0.5*i)])
+            lc.set_linewidth(3)
+            line = axs[1].add_collection(lc)
+    
+        if(colourbar):
+            axcb = fig.colorbar(line, ax=axs[1])   
+            axcb.set_label('velocity (a.u.)')
+        
+        axs[1].axis("scaled")
+        
+        axs[1].set(xlabel = "x (a.u.)", ylabel = "y (a.u.)")
+        plt.tight_layout()  
+        
+    else: # monochrome trajectory
+        for i in range(0,symmetry,2):
+            axs[1].plot(solplot2D[:,i,0], solplot[:,i,1], color = "blue", linestyle = "-")
+        
+        axs[1].axis("scaled")    
+        axs[1].set(xlabel = "x (a.u.)", ylabel = "y (a.u.)")    
+        plt.tight_layout()                  
+   
 
-if (n == 4):
-    for i in range(0,7,2):
-         axs[1].plot(solplot[-1, (i,   i+8)], 
-                     solplot[-1, (i+1, i+9)], linestyle = ":", marker = "", color="gray")   
-
-if (colourcode==False):
-    #trajectory
-    for i in range(0,16,2):
-        axs[1].plot(solplot[:,i], solplot[:,i+1], color = "blue", linestyle = "-")
-    
-    axs[1].axis("scaled")    
-    axs[1].set(xlabel = "x (a.u.)", ylabel = "y (a.u.)")    
-    plt.tight_layout()
-
-else:
-    ### colourcoding velocities
-    pos = solplot[:,:16] # positions over time
-    vel = solplot[:,16:] # velocities over time
-    normvel = np.zeros((np.shape(vel)[0],8)) #shape: [steps,nodes]
-    
-    for node in range(0,15,2):    
-        for step in range(np.shape(vel)[0]):
-             normvel[step,int(0.5*node)] = np.linalg.norm([vel[step,node], vel[step,node+1]])
-    
-    norm = plt.Normalize(normvel.min(), normvel.max()) 
-    
-    #####trajectory colorcoded for velocity
-    for i in range(0,15,2):  
-        points = pos[:,(i,i+1)].reshape(-1,1,2) # for node i
-        segments = np.concatenate([points[:-1],points[1:]], axis = 1)
-           
-        lc = LineCollection(segments, cmap = 'viridis', norm=norm, zorder = 100)
-        lc.set_array(normvel[:,int(0.5*i)])
-        lc.set_linewidth(3)
-        line = axs[1].add_collection(lc)
-
-    axcb = fig.colorbar(line, ax=axs[1])   
-    axcb.set_label('velocity (a.u.)')
-    
-    axs[1].axis("scaled")
-    
-    axs[1].set(xlabel = "x (a.u.)", ylabel = "y (a.u.)")
-    plt.tight_layout()
+plotting(solplot, n = n, symmetry = symmetry)
+#plotting(solplot2, n = n, colourbar = False, mainmarkercolor="darkblue", symmetry = symmetry)
