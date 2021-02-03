@@ -13,16 +13,35 @@ import matplotlib.pyplot as plt
 from matplotlib.collections import LineCollection
 from warnings import warn
 import timeit
+import seaborn as sns
 
 ### Parameters
-symmetry = 10
-d = 0.5 # damping 
-n = 10 # n maximum distant neighbour to connect on each side 
-magnitude = 0
+symmetry = 8 # finegraining with multiples of 8 possible 
+d = 1 # damping 
+n = 3 # n maximum distant neighbour to connect on each side 
+magnitude = 1 # Magnitude of distortion 
+rings = 2 # Number of rings
+ka = 0.5 # Spring constant anchor springs
 ### 
 
+if(n > symmetry/2):
+    n = int(np.floor(symmetry/2))
+    warn("Selected number of neighbours n too large. n has been set to " + str(n) + ".")
+    
+
 def NPC(t, y, Lrest, la, K, ka, randf, d, n, symmetry = 8):
-    ''''''
+    '''
+    t: time points 
+    y: values of the solution at t 
+    Lrest: Circulant matrix of resting lengths of all springs 
+    K: Circulant matrix of all radial spring constants 
+    ka: Spring constants of anchor springs 
+    randf: array of forces (length = symmetry) to be applied in radial direction to each node 
+    d: Damping factor 
+    n: Number of connected neighbours in cw and ccw direction for each node 
+    symmetry (default: 8): Number of nodes 
+    output: solutions at t. x and y components of positions and velocities of each node for each time-step 
+    '''
     v = np.reshape(y[2*symmetry:], (symmetry, 2))
     x = np.reshape(y[:2*symmetry], (symmetry, 2))
 
@@ -55,116 +74,133 @@ def Pol2cart(rho, phi):
     y = rho * np.sin(phi)
     return(x, y)
 
-def Initialcoords(la, symmetry = symmetry, angleoffset = 0): 
-# Generate cartesian coordinates of the octagon using its polar coordinates #TODO real-data coordinates
+def Initialcoords(la, symmetry = symmetry, angleoffset = 0): #TODO real-data coordinates
+    '''
+    Generates cartesian coordinates of the NPC given radius and symmetry 
+    ## Input ##
+    la: NPC Radius
+    symmetry: Number of corners
+    angleoffset (rad): Rotates the NPC by the given offset. Default 0
+    ## Return values ##
+    Cartesian coordinates in 1D and 2D array format 
+    '''
     angle = 0.
     cartc = np.zeros(2*symmetry) 
     
-    for i in range(0,2*symmetry,2): # skip every other entry to populate it with y-coords
-        x, y = Pol2cart(la,angle)
+    for i in range(0, 2*symmetry, 2): # skip every other entry to populate it with y-coords
+        x, y = Pol2cart(la, angle+angleoffset)
         cartc[i] = x
         cartc[i+1] = y
         angle += 2*np.pi/symmetry
+        
     cartc2D = cartc.reshape(symmetry,2)
     return cartc, cartc2D
 
-la = 1
-la2 = 1.05
-cartc, cart2D = Initialcoords(la = la, angleoffset = 0)
-cartc2, cart22D = Initialcoords(la = la2, angleoffset = 2*np.pi/(3*symmetry))
-#cartc = np.array([1.,0,np.sqrt(2)/2, np.sqrt(2)/2,0,1,-np.sqrt(2)/2,np.sqrt(2)/2,-1,0,-np.sqrt(2)/2,-np.sqrt(2)/2,0,-1,np.sqrt(2)/2,-np.sqrt(2)/2]) #TODO remove
 
-def Springlengths(cart2D, symmetry): # TODO generalize to different symmetries 
-        l = np.zeros(int(np.floor(symmetry/2)))
-        for i in range(len(l)):
-            l[i] = np.linalg.norm(cart2D[0,:]-cart2D[(i+1),:])
-        
-        if(symmetry%2 == 0): #if symmetry is even
-            Lrest = circulant(np.append(0, np.append(l, np.flip(l[:-1]))))
-        else: # if symmetry is odd
-            Lrest = circulant(np.append(0, [l, np.flip(l)]))
-        return Lrest
+def Springlengths(cart2D, symmetry): 
+    '''Compute lengths of springs from coordinates and returns circulant matrix
+    '''
+    l = np.zeros(int(np.floor(symmetry/2)))
+    for i in range(len(l)):
+        l[i] = np.linalg.norm(cart2D[0, :] - cart2D[(i+1), :])
+    
+    if(symmetry%2 == 0): #if symmetry is even
+        Lrest = circulant(np.append(0, np.append(l, np.flip(l[:-1]))))
+    else: # if symmetry is odd
+        Lrest = circulant(np.append(0, [l, np.flip(l)]))
+    return Lrest
 
-def Springconstants(symmetry):
+
+def Springconstants(symmetry): # TODO: More variable spring constants? 
+    "Returns circulant matrix of spring constants "
     k = np.ones(int(np.floor(symmetry/2)))
     if(symmetry%2 == 0): #if symmetry is even
-        k[-1] = 0.5
+        k[-1] = k[-1]/2 # springs that connect opposite corners will be double-counted. Spring constant thus halved 
         K = circulant(np.append(0, np.append(k, np.flip(k[:-1]))))
-    else:
+    else: #if symmetry is odd 
         K = circulant(np.append(0, [k, np.flip(k)]))
     return K
 
-def Forces(dist = ("normal", "exp"), rings = 2, magnitude = 1):
+
+def Forces(dist = ("normal", "exp"), rings = 2, magnitude = 1, symmetry = symmetry):
+    '''Returns array of Forces that are later applied in radial direction to the NPC corners
+    ## Input ## 
+    dist: Distribution to sample forces from. options: normal, or exponential distribution
+    rings: Number of Rings to apply forces to. Forces are correlated between rings. Default is 2. 
+    magnitude: Total magnitude of distortion. Default is 1. 
+    ## Return ## 
+    1D array of forces applied to each node 
+    '''
     finalmag = magnitude # total magnitude
     randf = np.zeros(symmetry) # magnitude of radial forces acting on nodes 0-8
     randf2 = np.zeros(symmetry)
     
     if (dist == "normal"):
-        for i in range(symmetry): randf[i] = np.random.normal(0,0.1)
+        for i in range(symmetry): randf[i] = np.random.normal(0, 1)
     elif (dist == "exp"):
-        for i in range(symmetry): randf[i] = np.random.exponential()
+        for i in range(symmetry): randf[i] = np.random.exponential()    
     
-    if (rings == 2):
-            for i in range(len(randf2)):
-                randf2[i] = randf[i] + np.random.normal(0, 0)
-    
-    #Determine total magnitude of distortions
-    initialmag = sum(abs(randf)) + sum(abs(randf2))
+    if (rings == 1):
+        initialmag = sum(abs(randf))         
+    elif (rings == 2):
+        for i in range(symmetry): randf2[i] = randf[i] + np.random.normal(0, 0)
+        initialmag = 0.5 * (sum(abs(randf)) + sum(abs(randf2)))
+        
     if(initialmag != 0): 
         randf = finalmag/initialmag * randf
         randf2 = finalmag/initialmag * randf2
     return randf, randf2
+ 
+la = 1
+la2 = 1.05
+angleoffset = 2*np.pi/(3*symmetry) + np.random.normal(0,0)
+cartc, cart2D = Initialcoords(la = la, angleoffset = 0)
+cartc2, cart22D = Initialcoords(la = la2, angleoffset = angleoffset)
 
 Lrest = Springlengths(cart2D, symmetry = symmetry)
 Lrest2 = Springlengths(cart22D, symmetry = symmetry)
 K = Springconstants(symmetry = symmetry)
-ka = 0.5
-
-if(n > symmetry/2):
-    n = int(np.floor(symmetry/2))
-    warn("Selected number of neighbours n too large. n has been set to " + str(n) + ".")
-
-
-
-randf, randf2 = Forces("normal", magnitude = magnitude)
-
-
-# starting coordinates and velocities of nodes 
-y0 = np.concatenate((cartc, np.zeros(2*symmetry))) # last 16 entries are starting velocities 
+randf, randf2 = Forces("normal", magnitude = magnitude, rings = rings)
+    
+# starting coordinates and velocities of nodes. last half of the entries are starting velocities 
+y0 = np.concatenate((cartc, np.zeros(2*symmetry))) 
 y02 = np.concatenate((cartc2, np.zeros(2*symmetry)))
 
 start = timeit.default_timer()
 
 # Solve ODE
-sol = solve_ivp(NPC, [0,100], y0, method='RK45', args=(Lrest, la, K, ka, randf, d, n, symmetry))
-sol2 = solve_ivp(NPC, [0,100], y02, method='RK45', args=(Lrest2, la2, K, ka, randf2, d, n, symmetry))
+sol = solve_ivp(NPC, [0,40], y0, method='RK45', args=(Lrest, la, K, ka, randf, d, n, symmetry))
+sol2 = solve_ivp(NPC, [0,40], y02, method='RK45', args=(Lrest2, la2, K, ka, randf2, d, n, symmetry))
 
 stop = timeit.default_timer()
 print('Time: ', stop - start) 
 
 #### Plotting ####################################################################
-colourcode = True # Trajectories colourcoded by velocity, or monochrome. 
-solplot = sol.y.T # solutions for plotting
-tplot = sol.t # timesteps for plotting
-#ax = sns.heatmap(solplot) 
-plt.rcParams.update({'font.size': 25})
-fig, axs = plt.subplots(2, 1, figsize = (13, 20))
-#plt.title("magnitude: " + str(finalmag) + " damping: " + str(d) + " n: " + str(n))
-axs = axs.ravel()
+plt.rcParams.update({'font.size': 30})
 
-solplot2 = sol2.y.T
-solplot3 = np.reshape(solplot,(len(solplot),2*symmetry,2))
-
-# x and y position over time 
-label = ["x", "y"]
-for i in range(2*symmetry):
-    axs[0].plot(tplot, solplot[:, i], label = label[i%2] + str(i))
-axs[0].set(xlabel = 't (a.u.)')
-#axs[0].legend(loc = 'best')
-
-
-def plotting(solplot, n = n, colourcode = True, colourbar = True, mainmarkercolor = "black", symmetry = symmetry):
-    solplot2D = np.reshape(solplot,(len(solplot),2*symmetry,2))
+def Plotting(sol, symmetry = symmetry, n = n,  linestyle = "-", legend = False, colourcode = True, colourbar = True, mainmarkercolor = "black"): # TODO 
+    '''
+    sol: Output of solve_ivp
+    symmetry: number of nodes
+    n: number of neighbours connected on each side per node
+    linestyle (default: "-"): Linestyle in 1st plot 
+    legend (default: False): Whether to show a legend in the 1st plot 
+    colourcode (default: True): colourcodes trajectories in 2nd plot if True
+    colorubar (default: True): Plots colourbar in 2nd plot if True and if colourcode is True
+    mainmarkercolor: Colour of nodes in 2nd plot 
+    '''
+    t = sol.t # timepoints
+    solplot = sol.y.T # position and velocity over time
+    solplot2D = np.reshape(solplot,(len(solplot),2*symmetry,2)) # 2D array of position and velocity over time 
+    
+    # Position over time
+    label = ["x", "y"]
+    palette = sns.color_palette("hsv", 2*symmetry)
+    for i in range(2*symmetry):
+        axs[0].plot(t, solplot[:, i], label = label[i%2] + str(i), linestyle = linestyle, color = palette[i])
+    if(legend):
+        axs[0].legend(loc = 'best')
+    axs[0].set(xlabel = 't (a.u.)')
     
     # Nodes at last timestep
     axs[1].plot(solplot2D[-1, :symmetry, 0], solplot2D[-1,:symmetry,1], 
@@ -176,25 +212,12 @@ def plotting(solplot, n = n, colourcode = True, colourbar = True, mainmarkercolo
         axs[1].plot((solplot2D[-1,i,0], 0), (solplot2D[-1,i,1], 0),
         linestyle = ":", marker = "", color="lightgray")   
         
-    # Radial springs TODO: fix 
-    for ni in range(1, n+1):
-        if(symmetry%ni == 0): # if the total number of nodes is a multiple of ni, the nodes will be devided into ni graphs
-            for i in range(ni):
-                connect = np.append([j for j in range(i, symmetry, ni)], i)
-                axs[1].plot(solplot2D[-1, connect, 0],solplot2D[-1, connect, 1], linestyle = ":", marker = "", color="gray")
-        else: # otherwise, all nodes are connected by one path TODO: WRONG!
-            connectopen = np.array([i%symmetry for i in range(0, ni*symmetry, ni)])
-            rep = int(len(connectopen)/len(set(connectopen)))
-            if (rep==1):
-                connect = np.append(connectopen, 0)
-                axs[1].plot(solplot2D[-1, connect, 0],solplot2D[-1, connect, 1], linestyle = ":", marker = "", color="gray")
-            else:
-                print(rep)
-                for k in range(rep):
-                    connect = np.append([i%symmetry for i in range(k, int(ni*symmetry/rep), ni)], k)
-                    axs[1].plot(solplot2D[-1, connect, 0],solplot2D[-1, connect, 1], linestyle = ":", marker = "", color="red")
+    # Radial springs 
+    for ni in range(1, n+1): # neighbours to connect to
+        for i in range(symmetry): # node to connect from 
+            axs[1].plot(solplot2D[-1, (i, (i+ni)%symmetry), 0], solplot2D[-1, (i, (i+ni)%symmetry), 1], linestyle = ":", marker = "", color="gray")
 
- 
+    # Trajectories 
     if (colourcode): # Colourcoded trajectory
         ### colourcoding velocities
         pos = solplot[:,:2*symmetry] # positions over time
@@ -212,7 +235,7 @@ def plotting(solplot, n = n, colourcode = True, colourbar = True, mainmarkercolo
             points = pos[:,(i,i+1)].reshape(-1,1,2) # for node i
             segments = np.concatenate([points[:-1],points[1:]], axis = 1)
                
-            lc = LineCollection(segments, cmap = 'viridis', norm=norm, zorder = 100)
+            lc = LineCollection(segments, cmap = 'plasma', norm=norm, zorder = 100)
             lc.set_array(normvel[:,int(0.5*i)])
             lc.set_linewidth(3)
             line = axs[1].add_collection(lc)
@@ -228,12 +251,15 @@ def plotting(solplot, n = n, colourcode = True, colourbar = True, mainmarkercolo
         
     else: # monochrome trajectory
         for i in range(0,symmetry,2):
-            axs[1].plot(solplot2D[:,i,0], solplot[:,i,1], color = "blue", linestyle = "-")
+            axs.plot(solplot2D[:,i,0], solplot[:,i,1], color = "blue", linestyle = "-")
         
-        axs[1].axis("scaled")    
-        axs[1].set(xlabel = "x (a.u.)", ylabel = "y (a.u.)")    
+        axs.axis("scaled")    
+        axs.set(xlabel = "x (a.u.)", ylabel = "y (a.u.)")    
         plt.tight_layout()                  
    
 
-plotting(solplot, n = n, symmetry = symmetry)
-#plotting(solplot2, n = n, colourbar = False, mainmarkercolor="darkblue", symmetry = symmetry)
+fig, axs = plt.subplots(2, 1, figsize = (15, 26))
+Plotting(sol, legend = True)
+Plotting(sol2, linestyle="--", colourbar = False, mainmarkercolor="darkblue")
+
+#cartc = np.array([1.,0,np.sqrt(2)/2, np.sqrt(2)/2,0,1,-np.sqrt(2)/2,np.sqrt(2)/2,-1,0,-np.sqrt(2)/2,-np.sqrt(2)/2,0,-1,np.sqrt(2)/2,-np.sqrt(2)/2]) #TODO remove
