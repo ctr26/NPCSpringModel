@@ -47,7 +47,8 @@ def hexadecagonspring(y, t, Lrest, la, K, ka, fext, d, n):
         accarray = fext[i] + accarray - d*v[i] # external force and damping
         allaccarray[i] = accarray 
 
-    dxdt = np.concatenate((v.flatten(), allaccarray.flatten()))                                                                
+    dxdt = np.concatenate((v.flatten(), allaccarray.flatten()))                
+                                                
     return dxdt
 
 ### lengths of the spring
@@ -86,9 +87,9 @@ d = 1 # damping
 n = 6 # maximum distant neighbour to connect on each side 
 
 # External forces 
-fext = np.array([[5,-0.5]     ,   [0.,0.] ,   [0.,0.] ,   [0.,0.],
+fext = np.array([[1,-0.1]     ,   [0.,0.] ,   [0.,0.] ,   [0.,0.],
                  [0.0,0.]   ,   [0.,0.] ,   [0.,0.] ,   [0.,0.],
-                 [-5.5,0.5]    ,   [0.,0.] ,   [0.,0.] ,   [0.,0.],
+                 [-1,0.1]    ,   [0.,0.] ,   [0.,0.] ,   [0.,0.],
                  [0.0,0.]   ,   [0.,0.] ,   [0.,0.] ,   [0.,0.]])
 
 
