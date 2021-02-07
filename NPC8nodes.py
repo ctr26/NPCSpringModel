@@ -14,15 +14,18 @@ from matplotlib.collections import LineCollection
 from warnings import warn
 import timeit
 import seaborn as sns
+from mpl_toolkits.mplot3d import Axes3D
 
 ### Parameters
 symmetry = 8 # finegraining with multiples of 8 possible 
 d = 1 # damping 
 n = 3 # n maximum distant neighbour to connect on each side 
-magnitude = 1 # Magnitude of distortion 
+magnitude = 10 # Magnitude of distortion 
 rings = 2 # Number of rings
 ka = 0.5 # Spring constant anchor springs
-### 
+corneroffset = 2*np.pi/(3.8*symmetry) + np.random.normal(0,0) # TODO: Number a rough estimate adapted from SMAP code. Research needed. 
+ringoffset = np.pi/(3*symmetry) + np.random.normal(0,0) # TODO: Number a rough estimate adapted from SMAP code. Research needed. 
+###  
 
 if(n > symmetry/2):
     n = int(np.floor(symmetry/2))
@@ -74,7 +77,7 @@ def Pol2cart(rho, phi):
     y = rho * np.sin(phi)
     return(x, y)
 
-def Initialcoords(la, symmetry = symmetry, angleoffset = 0): #TODO real-data coordinates
+def Initialcoords(la, symmetry = symmetry, corneroffset = 0, ringoffset = 0): #TODO real-data coordinates
     '''
     Generates cartesian coordinates of the NPC given radius and symmetry 
     ## Input ##
@@ -88,27 +91,21 @@ def Initialcoords(la, symmetry = symmetry, angleoffset = 0): #TODO real-data coo
     cartc = np.zeros(2*symmetry) 
     
     for i in range(0, 2*symmetry, 2): # skip every other entry to populate it with y-coords
-        x, y = Pol2cart(la, angle+angleoffset)
+        x, y = Pol2cart(la, angle+corneroffset+ringoffset)
         cartc[i] = x
         cartc[i+1] = y
         angle += 2*np.pi/symmetry
-        
-    cartc2D = cartc.reshape(symmetry,2)
-    return cartc, cartc2D
+    return cartc
 
 
-def Springlengths(cart2D, symmetry): 
+def Springlengths(cartc, symmetry): 
     '''Compute lengths of springs from coordinates and returns circulant matrix
     '''
-    l = np.zeros(int(np.floor(symmetry/2)))
+    cart2D = cartc.reshape(symmetry,2)
+    l = np.zeros(symmetry)
     for i in range(len(l)):
-        l[i] = np.linalg.norm(cart2D[0, :] - cart2D[(i+1), :])
-    
-    if(symmetry%2 == 0): #if symmetry is even
-        Lrest = circulant(np.append(0, np.append(l, np.flip(l[:-1]))))
-    else: # if symmetry is odd
-        Lrest = circulant(np.append(0, [l, np.flip(l)]))
-    return Lrest
+        l[i] = np.linalg.norm(cart2D[0, :] - cart2D[i, :])      
+    return circulant(l)
 
 
 def Springconstants(symmetry): # TODO: More variable spring constants? 
@@ -122,7 +119,7 @@ def Springconstants(symmetry): # TODO: More variable spring constants?
     return K
 
 
-def Forces(dist = ("normal", "exp"), rings = 2, magnitude = 1, symmetry = symmetry):
+def Forces(dist = ("normal", "exp"), corneroffset = corneroffset, rings = 2, magnitude = 1, symmetry = symmetry):
     '''Returns array of Forces that are later applied in radial direction to the NPC corners
     ## Input ## 
     dist: Distribution to sample forces from. options: normal, or exponential distribution
@@ -131,7 +128,7 @@ def Forces(dist = ("normal", "exp"), rings = 2, magnitude = 1, symmetry = symmet
     ## Return ## 
     1D array of forces applied to each node 
     '''
-    finalmag = magnitude # total magnitude
+    np.random.seed(0)
     randf = np.zeros(symmetry) # magnitude of radial forces acting on nodes 0-8
     randf2 = np.zeros(symmetry)
     
@@ -141,36 +138,87 @@ def Forces(dist = ("normal", "exp"), rings = 2, magnitude = 1, symmetry = symmet
         for i in range(symmetry): randf[i] = np.random.exponential()    
     
     if (rings == 1):
-        initialmag = sum(abs(randf))         
+        initialmag = sum(abs(randf))       
+        
     elif (rings == 2):
-        for i in range(symmetry): randf2[i] = randf[i] + np.random.normal(0, 0)
+        angle = 2*np.pi/symmetry
+        weight1 = (angle - corneroffset)/angle# iversely weights closeness of ring2 node i to ring1 node i... 
+        weight2 = corneroffset/angle # ...and  to ring1 node i+1 
+        
+        for i in range(symmetry): 
+            randf2[i] = weight1 * randf[i] + weight2 * randf[(i+1)%symmetry] + np.random.normal(0, 0)
+            #randf2[i] = randf[i] #TODO: delete
         initialmag = 0.5 * (sum(abs(randf)) + sum(abs(randf2)))
         
     if(initialmag != 0): 
-        randf = finalmag/initialmag * randf
-        randf2 = finalmag/initialmag * randf2
+        randf = magnitude/initialmag * randf
+        randf2 = magnitude/initialmag * randf2
     return randf, randf2
- 
-la = 1
-la2 = 1.05
-angleoffset = 2*np.pi/(3*symmetry) + np.random.normal(0,0)
-cartc, cart2D = Initialcoords(la = la, angleoffset = 0)
-cartc2, cart22D = Initialcoords(la = la2, angleoffset = angleoffset)
 
-Lrest = Springlengths(cart2D, symmetry = symmetry)
-Lrest2 = Springlengths(cart22D, symmetry = symmetry)
-K = Springconstants(symmetry = symmetry)
-randf, randf2 = Forces("normal", magnitude = magnitude, rings = rings)
+def ForcesMultivariateNorm(cartc, cartc2, symmetry, magnitude = 1): # TODO: include distances to nucleoplasmic ring 
+    ''''''
     
-# starting coordinates and velocities of nodes. last half of the entries are starting velocities 
-y0 = np.concatenate((cartc, np.zeros(2*symmetry))) 
-y02 = np.concatenate((cartc2, np.zeros(2*symmetry)))
+    cartall = np.append(cartc, cartc2)
+    cartall = cartall.reshape(2*symmetry, 2)
+  
+    AllL = np.zeros((symmetry*2, symmetry*2))
+    
+    for i in range(symmetry*2):
+        for j in range(symmetry*2):
+            AllL[i, j] = np.linalg.norm(cartall[i, :] - cartall[j, :])
+    
+    #AllL = circulant(l)
+    mean = list(np.zeros(symmetry*2))
+    #mean = (0, 0,0)
+    LInv = AllL.max() - AllL
+    
+    cov = []
+    for i in range(symmetry*2):
+        cov.append(list(LInv[i]/AllL.max()))
+            
+    rng = np.random.default_rng()
+    F = rng.multivariate_normal(mean, cov)
+    
+    initialmag = sum(F)
+    
+    if (initialmag != 0):
+        F = magnitude/initialmag * F
+          
+    return F[0:symmetry], F[symmetry:]
+
+  
+
+la = 50 # TODO: Number a rough estimate adapted from SMAP code. Research needed. 
+la2 = 54 # TODO: Number a rough estimate adapted from SMAP code. Research needed. 
+
+
+randf, randf2 = Forces("normal", magnitude = magnitude, rings = rings)
+
+
+def returnparameters(la, corneroffset = 0, ringoffset = 0, symmetry = symmetry):
+    cartc = Initialcoords(la = la, corneroffset=corneroffset, ringoffset=ringoffset)
+    Lrest = Springlengths(cartc, symmetry)
+    K = Springconstants(symmetry)
+    y0 = np.concatenate((cartc, np.zeros(2*symmetry))) # starting coordinates and velocities of nodes. last half of the entries are starting velocities 
+    return cartc, Lrest, K, y0
+
+
+cartc, Lrest, K, y0 = returnparameters(la)
+cartc2, Lrest2, _, y02 = returnparameters(la = la2, corneroffset = corneroffset)
+
+cartcR2, LrestR2, _, y0R2 = returnparameters(la = la2, corneroffset=0.0707, ringoffset=ringoffset) # TODO: Number a rough estimate adapted from SMAP code. Research needed. 
+cartc2R2, Lrest2R2, _, y02R2 = returnparameters(la = la, corneroffset = 0.2776, ringoffset=ringoffset) # TODO: Number a rough estimate adapted from SMAP code. Research needed. 
+
+randf, randf2 = ForcesMultivariateNorm(cartc, cartc2, symmetry, magnitude = magnitude)   #TODO: refactor   
 
 start = timeit.default_timer()
 
 # Solve ODE
 sol = solve_ivp(NPC, [0,40], y0, method='RK45', args=(Lrest, la, K, ka, randf, d, n, symmetry))
 sol2 = solve_ivp(NPC, [0,40], y02, method='RK45', args=(Lrest2, la2, K, ka, randf2, d, n, symmetry))
+#2nd ring
+solR2 = solve_ivp(NPC, [0,40], y0R2, method='RK45', args=(LrestR2, la2, K, ka, randf, d, n, symmetry))
+sol2R2 = solve_ivp(NPC, [0,40], y02R2, method='RK45', args=(Lrest2R2, la, K, ka, randf2, d, n, symmetry))
 
 stop = timeit.default_timer()
 print('Time: ', stop - start) 
@@ -190,8 +238,8 @@ def Plotting(sol, symmetry = symmetry, n = n,  linestyle = "-", legend = False, 
     mainmarkercolor: Colour of nodes in 2nd plot 
     '''
     t = sol.t # timepoints
-    solplot = sol.y.T # position and velocity over time
-    solplot2D = np.reshape(solplot,(len(solplot),2*symmetry,2)) # 2D array of position and velocity over time 
+    solplot = sol.y.T # positions and velocities of nodes over time
+    solplot2D = np.reshape(solplot,(len(solplot),2*symmetry,2)) # 2D array of positions and velocities over time 
     
     # Position over time
     label = ["x", "y"]
@@ -215,7 +263,8 @@ def Plotting(sol, symmetry = symmetry, n = n,  linestyle = "-", legend = False, 
     # Radial springs 
     for ni in range(1, n+1): # neighbours to connect to
         for i in range(symmetry): # node to connect from 
-            axs[1].plot(solplot2D[-1, (i, (i+ni)%symmetry), 0], solplot2D[-1, (i, (i+ni)%symmetry), 1], linestyle = ":", marker = "", color="gray")
+            axs[1].plot(solplot2D[-1, (i, (i+ni)%symmetry), 0], solplot2D[-1, (i, (i+ni)%symmetry), 1], 
+            linestyle = ":", marker = "", color="gray")
 
     # Trajectories 
     if (colourcode): # Colourcoded trajectory
@@ -261,5 +310,26 @@ def Plotting(sol, symmetry = symmetry, n = n,  linestyle = "-", legend = False, 
 fig, axs = plt.subplots(2, 1, figsize = (15, 26))
 Plotting(sol, legend = True)
 Plotting(sol2, linestyle="--", colourbar = False, mainmarkercolor="darkblue")
+# Plotting(solR2, colourbar = False)
+# Plotting(sol2R2, linestyle="--", colourbar = False, mainmarkercolor="darkblue")
 
+
+## 3D plot
+solplot2D0 = np.reshape(sol.y.T,(len(sol.y.T),2*symmetry,2)) # 2D array of positions and velocities over time 
+solplot2D1 = np.reshape(sol2.y.T,(len(sol2.y.T),2*symmetry,2))
+solplot2D2 = np.reshape(solR2.y.T,(len(solR2.y.T),2*symmetry,2))
+solplot2D3 = np.reshape(sol2R2.y.T,(len(sol2R2.y.T),2*symmetry,2))
+
+fig = plt.figure()
+ax = fig.add_subplot(111, projection='3d')
+ax.scatter(solplot2D0[-1, :symmetry,0], solplot2D0[-1, :symmetry,1])
+ax.scatter(solplot2D1[-1, :symmetry,0], solplot2D1[-1, :symmetry,1])
+ax.scatter(solplot2D2[-1, :symmetry,0], solplot2D2[-1, :symmetry,1], -50)
+ax.scatter(solplot2D3[-1, :symmetry,0], solplot2D3[-1, :symmetry,1], -50)
+
+
+
+
+#plt.scatter(F[:,0], F[:,1]) 
 #cartc = np.array([1.,0,np.sqrt(2)/2, np.sqrt(2)/2,0,1,-np.sqrt(2)/2,np.sqrt(2)/2,-1,0,-np.sqrt(2)/2,-np.sqrt(2)/2,0,-1,np.sqrt(2)/2,-np.sqrt(2)/2]) #TODO remove
+
