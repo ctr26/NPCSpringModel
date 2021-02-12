@@ -20,17 +20,29 @@ from mpl_toolkits.mplot3d import Axes3D
 symmetry = 8 # finegraining with multiples of 8 possible 
 d = 1 # damping 
 n = 3 # n maximum distant neighbour to connect on each side 
-magnitude = 10 # Magnitude of distortion 
+magnitude = 25 # Average magnitude of distortion per ring
 rings = 2 # Number of rings
 ka = 0.5 # Spring constant anchor springs
-corneroffset = 2*np.pi/(3.8*symmetry) + np.random.normal(0,0) # TODO: Number a rough estimate adapted from SMAP code. Research needed. 
-ringoffset = np.pi/(3*symmetry) + np.random.normal(0,0) # TODO: Number a rough estimate adapted from SMAP code. Research needed. 
-###  
+
+### NPC Measures. Here rough measures for Nup107, adapted from SMAP. TODO: Research measures. 
+la = 50 # TODO: Number a rough estimate adapted from SMAP code. Research needed. 
+la2 = 54 # TODO: Number a rough estimate adapted from SMAP code. Research needed. 
+
+# Ring 1
+corneroffset0 = 0
+corneroffset1 = 0.2069 + np.random.normal(0,0) # TODO: Number a rough estimate adapted from SMAP code. Research needed. 
+
+# Ring 2 
+ringoffset = 0.1309 + np.random.normal(0,0) # Offset between nucleoplamic and cytoplasmic ring. TODO: Number a rough estimate adapted from SMAP code. Research needed. 
+corneroffset2 = 0.0707 + np.random.normal(0,0) # TODO: Number a rough estimate adapted from SMAP code. Research needed. 
+corneroffset3 = 0.2776 + np.random.normal(0,0) # TODO: Number a rough estimate adapted from SMAP code. Research needed. 
+### 
 
 if(n > symmetry/2):
     n = int(np.floor(symmetry/2))
     warn("Selected number of neighbours n too large. n has been set to " + str(n) + ".")
     
+### Functions 
 
 def NPC(t, y, Lrest, la, K, ka, randf, d, n, symmetry = 8):
     '''
@@ -72,7 +84,8 @@ def NPC(t, y, Lrest, la, K, ka, randf, d, n, symmetry = 8):
 
 
 def Pol2cart(rho, phi):
-    '''Function transforms polar to cartesian coordinates'''
+    '''Transforms polar coordinates of a point (rho: radius, phi: angle) to 2D cartesian coordinates.
+    '''
     x = rho * np.cos(phi)
     y = rho * np.sin(phi)
     return(x, y)
@@ -119,81 +132,45 @@ def Springconstants(symmetry): # TODO: More variable spring constants?
     return K
 
 
-def Forces(dist = ("normal", "exp"), corneroffset = corneroffset, rings = 2, magnitude = 1, symmetry = symmetry):
-    '''Returns array of Forces that are later applied in radial direction to the NPC corners
-    ## Input ## 
-    dist: Distribution to sample forces from. options: normal, or exponential distribution
-    rings: Number of Rings to apply forces to. Forces are correlated between rings. Default is 2. 
-    magnitude: Total magnitude of distortion. Default is 1. 
-    ## Return ## 
-    1D array of forces applied to each node 
+def ForcesMultivariateNorm(*allringcords, symmetry = 8, magnitude = 50): # TODO: include distances to nucleoplasmic ring 
     '''
-    np.random.seed(0)
-    randf = np.zeros(symmetry) # magnitude of radial forces acting on nodes 0-8
-    randf2 = np.zeros(symmetry)
+    Returns array of Forces that are later applied in radial direction to the NPC corners
+    ## Input ## 
+    *coordring: Initial coordinates of nodes for an arbitrary number of rings. 
+    magnitude: Total magnitude of distortion. Default is 50. 
+    ## Returns ## 
+    For each ring, an array of forces applied to each node
+    '''
     
-    if (dist == "normal"):
-        for i in range(symmetry): randf[i] = np.random.normal(0, 1)
-    elif (dist == "exp"):
-        for i in range(symmetry): randf[i] = np.random.exponential()    
+    allcoords = np.asarray(allringcords) 
+    nrings = len(allringcords) # number of rings
     
-    if (rings == 1):
-        initialmag = sum(abs(randf))       
-        
-    elif (rings == 2):
-        angle = 2*np.pi/symmetry
-        weight1 = (angle - corneroffset)/angle# iversely weights closeness of ring2 node i to ring1 node i... 
-        weight2 = corneroffset/angle # ...and  to ring1 node i+1 
-        
-        for i in range(symmetry): 
-            randf2[i] = weight1 * randf[i] + weight2 * randf[(i+1)%symmetry] + np.random.normal(0, 0)
-            #randf2[i] = randf[i] #TODO: delete
-        initialmag = 0.5 * (sum(abs(randf)) + sum(abs(randf2)))
-        
-    if(initialmag != 0): 
-        randf = magnitude/initialmag * randf
-        randf2 = magnitude/initialmag * randf2
-    return randf, randf2
-
-def ForcesMultivariateNorm(cartc, cartc2, symmetry, magnitude = 1): # TODO: include distances to nucleoplasmic ring 
-    ''''''
-    
-    cartall = np.append(cartc, cartc2)
-    cartall = cartall.reshape(2*symmetry, 2)
+    allcoords = allcoords.reshape(symmetry*nrings, 2)
   
-    AllL = np.zeros((symmetry*2, symmetry*2))
+    AllD = np.zeros((symmetry*nrings, symmetry*nrings)) # all distances
     
-    for i in range(symmetry*2):
-        for j in range(symmetry*2):
-            AllL[i, j] = np.linalg.norm(cartall[i, :] - cartall[j, :])
+    for i in range(symmetry*nrings):
+        for j in range(symmetry*nrings):
+            AllD[i, j] = np.linalg.norm(allcoords[i, :] - allcoords[j, :])
+
+    mean = list(np.zeros(symmetry*nrings)) # Mean of the normal distribution
+
+    LInv = AllD.max() - AllD # invert distances  
     
-    #AllL = circulant(l)
-    mean = list(np.zeros(symmetry*2))
-    #mean = (0, 0,0)
-    LInv = AllL.max() - AllL
-    
-    cov = []
-    for i in range(symmetry*2):
-        cov.append(list(LInv[i]/AllL.max()))
+    cov = [] # covariance matrix 
+    for i in range(symmetry*nrings):
+        cov.append(list(LInv[i]/AllD.max()))
             
     rng = np.random.default_rng()
     F = rng.multivariate_normal(mean, cov)
     
-    initialmag = sum(F)
+    initialmag = sum(abs(F))
     
     if (initialmag != 0):
-        F = magnitude/initialmag * F
-          
-    return F[0:symmetry], F[symmetry:]
-
+        F = nrings*magnitude/initialmag * F
+    
+    return np.array_split(F, nrings)
   
-
-la = 50 # TODO: Number a rough estimate adapted from SMAP code. Research needed. 
-la2 = 54 # TODO: Number a rough estimate adapted from SMAP code. Research needed. 
-
-
-randf, randf2 = Forces("normal", magnitude = magnitude, rings = rings)
-
 
 def returnparameters(la, corneroffset = 0, ringoffset = 0, symmetry = symmetry):
     cartc = Initialcoords(la = la, corneroffset=corneroffset, ringoffset=ringoffset)
@@ -203,22 +180,20 @@ def returnparameters(la, corneroffset = 0, ringoffset = 0, symmetry = symmetry):
     return cartc, Lrest, K, y0
 
 
-cartc, Lrest, K, y0 = returnparameters(la)
-cartc2, Lrest2, _, y02 = returnparameters(la = la2, corneroffset = corneroffset)
+cartc, Lrest, K, y0 = returnparameters(la, corneroffset = corneroffset0)
+cartc2, Lrest2, _, y02 = returnparameters(la = la2, corneroffset = corneroffset1)
+cartcR2, LrestR2, _, y0R2 = returnparameters(la = la2, corneroffset=corneroffset2, ringoffset=ringoffset) # TODO: Number a rough estimate adapted from SMAP code. Research needed. 
+cartc2R2, Lrest2R2, _, y02R2 = returnparameters(la = la, corneroffset = corneroffset3, ringoffset=ringoffset) # TODO: Number a rough estimate adapted from SMAP code. Research needed. 
 
-cartcR2, LrestR2, _, y0R2 = returnparameters(la = la2, corneroffset=0.0707, ringoffset=ringoffset) # TODO: Number a rough estimate adapted from SMAP code. Research needed. 
-cartc2R2, Lrest2R2, _, y02R2 = returnparameters(la = la, corneroffset = 0.2776, ringoffset=ringoffset) # TODO: Number a rough estimate adapted from SMAP code. Research needed. 
-
-randf, randf2 = ForcesMultivariateNorm(cartc, cartc2, symmetry, magnitude = magnitude)   #TODO: refactor   
+randf, randf2, randf3, randf4 = ForcesMultivariateNorm(cartc, cartc2, cartcR2, cartc2R2, symmetry = symmetry, magnitude = magnitude)   
 
 start = timeit.default_timer()
 
-# Solve ODE
+# Solve ODE, ring 1 - 4 
 sol = solve_ivp(NPC, [0,40], y0, method='RK45', args=(Lrest, la, K, ka, randf, d, n, symmetry))
 sol2 = solve_ivp(NPC, [0,40], y02, method='RK45', args=(Lrest2, la2, K, ka, randf2, d, n, symmetry))
-#2nd ring
-solR2 = solve_ivp(NPC, [0,40], y0R2, method='RK45', args=(LrestR2, la2, K, ka, randf, d, n, symmetry))
-sol2R2 = solve_ivp(NPC, [0,40], y02R2, method='RK45', args=(Lrest2R2, la, K, ka, randf2, d, n, symmetry))
+solR2 = solve_ivp(NPC, [0,40], y0R2, method='RK45', args=(LrestR2, la2, K, ka, randf3, d, n, symmetry))
+sol2R2 = solve_ivp(NPC, [0,40], y02R2, method='RK45', args=(Lrest2R2, la, K, ka, randf4, d, n, symmetry))
 
 stop = timeit.default_timer()
 print('Time: ', stop - start) 
@@ -310,8 +285,8 @@ def Plotting(sol, symmetry = symmetry, n = n,  linestyle = "-", legend = False, 
 fig, axs = plt.subplots(2, 1, figsize = (15, 26))
 Plotting(sol, legend = True)
 Plotting(sol2, linestyle="--", colourbar = False, mainmarkercolor="darkblue")
-# Plotting(solR2, colourbar = False)
-# Plotting(sol2R2, linestyle="--", colourbar = False, mainmarkercolor="darkblue")
+Plotting(solR2, colourbar = False)
+Plotting(sol2R2, linestyle="--", colourbar = False, mainmarkercolor="darkblue")
 
 
 ## 3D plot
