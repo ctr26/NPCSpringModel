@@ -15,6 +15,7 @@ from warnings import warn
 import timeit
 import seaborn as sns
 from mpl_toolkits.mplot3d import Axes3D
+import csv
 
 ### Parameters
 symmetry = 8 # finegraining with multiples of 8 possible 
@@ -27,6 +28,8 @@ ka = 0.5 # Spring constant anchor springs
 ### NPC Measures. Here rough measures for Nup107, adapted from SMAP. TODO: Research measures. 
 la = 50 # TODO: Number a rough estimate adapted from SMAP code. Research needed. 
 la2 = 54 # TODO: Number a rough estimate adapted from SMAP code. Research needed. 
+
+zdist = -50 # distance between cytoplasmic and nucleoplasmic ring TODO: realistic number
 
 # Ring 1
 corneroffset0 = 0
@@ -299,9 +302,21 @@ fig = plt.figure()
 ax = fig.add_subplot(111, projection='3d')
 ax.scatter(solplot2D0[-1, :symmetry,0], solplot2D0[-1, :symmetry,1])
 ax.scatter(solplot2D1[-1, :symmetry,0], solplot2D1[-1, :symmetry,1])
-ax.scatter(solplot2D2[-1, :symmetry,0], solplot2D2[-1, :symmetry,1], -50)
-ax.scatter(solplot2D3[-1, :symmetry,0], solplot2D3[-1, :symmetry,1], -50)
+ax.scatter(solplot2D2[-1, :symmetry,0], solplot2D2[-1, :symmetry,1], zdist)
+ax.scatter(solplot2D3[-1, :symmetry,0], solplot2D3[-1, :symmetry,1], zdist)
 
+with open('/home/maria/Documents/NPCPython/NPCexample.csv', 'w', newline='') as csvfile:
+    spamwriter = csv.writer(csvfile, delimiter=',',
+                            quotechar='|', quoting=csv.QUOTE_MINIMAL)
+    for i in range(symmetry):
+        spamwriter.writerow(np.append(solplot2D0[-1, i, :], 0))
+    for i in range(symmetry):
+        spamwriter.writerow(np.append(solplot2D1[-1, i, :], 0))
+    for i in range(symmetry):
+        spamwriter.writerow(np.append(solplot2D2[-1, i, :], zdist))
+    for i in range(symmetry):
+        spamwriter.writerow(np.append(solplot2D3[-1, i, :], zdist))
+    #spamwriter.writerow(['Spam', 'Lovely Spam', 'Wonderful Spam'])
 
 
 
