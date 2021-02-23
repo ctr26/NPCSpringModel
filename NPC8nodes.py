@@ -19,9 +19,9 @@ import csv
 
 ### Parameters
 symmetry = 8 # finegraining with multiples of 8 possible 
-d = 1 # damping 
-n = 3 # n maximum distant neighbour to connect on each side 
-magnitude = 25 # Average magnitude of distortion per ring
+d = 0.1 # damping 
+n = 2 # n maximum distant neighbour to connect on each side 
+magnitude = 50 # Average magnitude of distortion per ring
 rings = 2 # Number of rings
 ka = 0.5 # Spring constant anchor springs
 
@@ -93,7 +93,7 @@ def Pol2cart(rho, phi):
     y = rho * np.sin(phi)
     return(x, y)
 
-def Initialcoords(la, symmetry = symmetry, corneroffset = 0, ringoffset = 0): #TODO real-data coordinates
+def Initialcoords(la, symmetry = symmetry, forces = np.zeros(symmetry), corneroffset = 0, ringoffset = 0): #TODO real-data coordinates
     '''
     Generates cartesian coordinates of the NPC given radius and symmetry 
     ## Input ##
@@ -107,7 +107,7 @@ def Initialcoords(la, symmetry = symmetry, corneroffset = 0, ringoffset = 0): #T
     cartc = np.zeros(2*symmetry) 
     
     for i in range(0, 2*symmetry, 2): # skip every other entry to populate it with y-coords
-        x, y = Pol2cart(la, angle+corneroffset+ringoffset)
+        x, y = Pol2cart(la + forces[int(i/2)], angle+corneroffset+ringoffset)
         cartc[i] = x
         cartc[i+1] = y
         angle += 2*np.pi/symmetry
@@ -144,7 +144,6 @@ def ForcesMultivariateNorm(*allringcords, symmetry = 8, magnitude = 50): # TODO:
     ## Returns ## 
     For each ring, an array of forces applied to each node
     '''
-    
     allcoords = np.asarray(allringcords) 
     nrings = len(allringcords) # number of rings
     
@@ -164,7 +163,7 @@ def ForcesMultivariateNorm(*allringcords, symmetry = 8, magnitude = 50): # TODO:
     for i in range(symmetry*nrings):
         cov.append(list(LInv[i]/AllD.max()))
             
-    rng = np.random.default_rng()
+    rng = np.random.default_rng(seed = 2) # TODO remove seed
     F = rng.multivariate_normal(mean, cov)
     
     initialmag = sum(abs(F))
@@ -180,6 +179,7 @@ def returnparameters(la, corneroffset = 0, ringoffset = 0, symmetry = symmetry):
     Lrest = Springlengths(cartc, symmetry)
     K = Springconstants(symmetry)
     y0 = np.concatenate((cartc, np.zeros(2*symmetry))) # starting coordinates and velocities of nodes. last half of the entries are starting velocities 
+    
     return cartc, Lrest, K, y0
 
 
@@ -190,21 +190,28 @@ cartc2R2, Lrest2R2, _, y02R2 = returnparameters(la = la, corneroffset = cornerof
 
 randf, randf2, randf3, randf4 = ForcesMultivariateNorm(cartc, cartc2, cartcR2, cartc2R2, symmetry = symmetry, magnitude = magnitude)   
 
-start = timeit.default_timer()
 
+fcoords = Initialcoords(la, forces = randf, corneroffset = corneroffset0)
+fcoords2 = Initialcoords(la, forces = randf2, corneroffset = corneroffset1)
+fcoords3 = Initialcoords(la, forces = randf3, corneroffset=corneroffset2, ringoffset=ringoffset)
+fcoords4 = Initialcoords(la, forces = randf4, corneroffset = corneroffset3, ringoffset=ringoffset)
+
+start = timeit.default_timer()
+tspan = [0,200]
+teval = np.arange(0,200,0.1)
 # Solve ODE, ring 1 - 4 
-sol = solve_ivp(NPC, [0,40], y0, method='RK45', args=(Lrest, la, K, ka, randf, d, n, symmetry))
-sol2 = solve_ivp(NPC, [0,40], y02, method='RK45', args=(Lrest2, la2, K, ka, randf2, d, n, symmetry))
-solR2 = solve_ivp(NPC, [0,40], y0R2, method='RK45', args=(LrestR2, la2, K, ka, randf3, d, n, symmetry))
-sol2R2 = solve_ivp(NPC, [0,40], y02R2, method='RK45', args=(Lrest2R2, la, K, ka, randf4, d, n, symmetry))
+sol = solve_ivp(NPC, tspan, y0, t_eval=teval, method='RK45', args=(Lrest, la, K, ka, randf, d, n, symmetry))
+sol2 = solve_ivp(NPC, tspan, y02, t_eval=teval, method='RK45', args=(Lrest2, la2, K, ka, randf2, d, n, symmetry))
+solR2 = solve_ivp(NPC, tspan, y0R2, t_eval=teval, method='RK45', args=(LrestR2, la2, K, ka, randf3, d, n, symmetry))
+sol2R2 = solve_ivp(NPC, tspan, y02R2, t_eval=teval, method='RK45', args=(Lrest2R2, la, K, ka, randf4, d, n, symmetry))
 
 stop = timeit.default_timer()
 print('Time: ', stop - start) 
 
 #### Plotting ####################################################################
-plt.rcParams.update({'font.size': 30})
+plt.rcParams.update({'font.size': 35})
 
-def Plotting(sol, symmetry = symmetry, n = n,  linestyle = "-", legend = False, colourcode = True, colourbar = True, mainmarkercolor = "black"): # TODO 
+def Plotting(sol, symmetry = symmetry, n = n,  linestyle = "-", legend = False, trajectory = True, colourcode = True, colourbar = True, mainmarkercolor = "black", markersize = 25, forces = 0, showforce = False): # TODO 
     '''
     sol: Output of solve_ivp
     symmetry: number of nodes
@@ -215,6 +222,7 @@ def Plotting(sol, symmetry = symmetry, n = n,  linestyle = "-", legend = False, 
     colorubar (default: True): Plots colourbar in 2nd plot if True and if colourcode is True
     mainmarkercolor: Colour of nodes in 2nd plot 
     '''
+    frame = -1 # 0 is the first frame, -1 is the last frame
     t = sol.t # timepoints
     solplot = sol.y.T # positions and velocities of nodes over time
     solplot2D = np.reshape(solplot,(len(solplot),2*symmetry,2)) # 2D array of positions and velocities over time 
@@ -229,67 +237,87 @@ def Plotting(sol, symmetry = symmetry, n = n,  linestyle = "-", legend = False, 
     axs[0].set(xlabel = 't (a.u.)')
     
     # Nodes at last timestep
-    axs[1].plot(solplot2D[-1, :symmetry, 0], solplot2D[-1,:symmetry,1], 
-    linestyle = "", marker = "o", color="gray", markerfacecolor = mainmarkercolor, markersize = 25, zorder = 50)
+    axs[1].plot(solplot2D[frame, :symmetry, 0], solplot2D[frame,:symmetry,1], 
+    linestyle = "", marker = "o", color="gray", markerfacecolor = mainmarkercolor, markersize = markersize, zorder = 50)
     
     # Anchor springs
     axs[1].plot([0,0], [0,0], marker = "o", color = "lightgray", markersize = 15)
     for i in range(0, symmetry):
-        axs[1].plot((solplot2D[-1,i,0], 0), (solplot2D[-1,i,1], 0),
+        axs[1].plot((solplot2D[frame,i,0], 0), (solplot2D[frame,i,1], 0),
         linestyle = ":", marker = "", color="lightgray")   
         
     # Radial springs 
     for ni in range(1, n+1): # neighbours to connect to
         for i in range(symmetry): # node to connect from 
-            axs[1].plot(solplot2D[-1, (i, (i+ni)%symmetry), 0], solplot2D[-1, (i, (i+ni)%symmetry), 1], 
+            axs[1].plot(solplot2D[frame, (i, (i+ni)%symmetry), 0], solplot2D[frame, (i, (i+ni)%symmetry), 1], 
             linestyle = ":", marker = "", color="gray")
 
     # Trajectories 
-    if (colourcode): # Colourcoded trajectory
-        ### colourcoding velocities
-        pos = solplot[:,:2*symmetry] # positions over time
-        vel = solplot[:,2*symmetry:] # velocities over time
-        normvel = np.zeros((np.shape(vel)[0], symmetry)) #shape: [steps,nodes]
+    if (trajectory):
+        if (colourcode): # Colourcoded trajectory
+            ### colourcoding velocities
+            pos = solplot[:,:2*symmetry] # positions over time
+            vel = solplot[:,2*symmetry:] # velocities over time
+            normvel = np.zeros((np.shape(vel)[0], symmetry)) #shape: [steps,nodes]
+            
+            for node in range(0, 2*symmetry-1, 2):    
+                for step in range(np.shape(vel)[0]):
+                     normvel[step,int(0.5*node)] = np.linalg.norm([vel[step,node], vel[step,node+1]])
+            
+            norm = plt.Normalize(normvel.min(), normvel.max()) 
+            
+            #####trajectory colorcoded for velocity
+            for i in range(0, 2*symmetry-1, 2):  
+                points = pos[:,(i,i+1)].reshape(-1,1,2) # for node i
+                segments = np.concatenate([points[:-1],points[1:]], axis = 1)
+                   
+                lc = LineCollection(segments, cmap = 'plasma', norm=norm, zorder = 100)
+                lc.set_array(normvel[:,int(0.5*i)])
+                lc.set_linewidth(3)
+                line = axs[1].add_collection(lc)
         
-        for node in range(0, 2*symmetry-1, 2):    
-            for step in range(np.shape(vel)[0]):
-                 normvel[step,int(0.5*node)] = np.linalg.norm([vel[step,node], vel[step,node+1]])
-        
-        norm = plt.Normalize(normvel.min(), normvel.max()) 
-        
-        #####trajectory colorcoded for velocity
-        for i in range(0, 2*symmetry-1, 2):  
-            points = pos[:,(i,i+1)].reshape(-1,1,2) # for node i
-            segments = np.concatenate([points[:-1],points[1:]], axis = 1)
-               
-            lc = LineCollection(segments, cmap = 'plasma', norm=norm, zorder = 100)
-            lc.set_array(normvel[:,int(0.5*i)])
-            lc.set_linewidth(3)
-            line = axs[1].add_collection(lc)
-    
-        if(colourbar):
-            axcb = fig.colorbar(line, ax=axs[1])   
-            axcb.set_label('velocity (a.u.)')
-        
-        axs[1].axis("scaled")
-        
-        axs[1].set(xlabel = "x (a.u.)", ylabel = "y (a.u.)")
-        plt.tight_layout()  
-        
-    else: # monochrome trajectory
-        for i in range(0,symmetry,2):
-            axs.plot(solplot2D[:,i,0], solplot[:,i,1], color = "blue", linestyle = "-")
-        
-        axs.axis("scaled")    
-        axs.set(xlabel = "x (a.u.)", ylabel = "y (a.u.)")    
-        plt.tight_layout()                  
-   
+            if(colourbar):
+                axcb = fig.colorbar(line, ax=axs[1])   
+                axcb.set_label('velocity (a.u.)')
+            
+        else: # monochrome trajectory
+            for i in range(0,symmetry,2):
+                axs[1].plot(solplot2D[:,i,0], solplot2D[:,i,1], color = "blue", linestyle = "-")
 
+    ### Force vectors
+    if(showforce and type(forces) != int):
+        forces2d = forces.reshape(symmetry, 2)
+        for i in range(0, symmetry):
+            axs[1].arrow(x = solplot2D[0,i,0], y = solplot2D[0,i,1], 
+                         dx = (forces2d[i,0] - solplot2D[0,i,0]), dy = (forces2d[i,1] - solplot2D[0,i,1]),
+                         width = 0.7, color="blue")   
+            
+    axs[1].axis("scaled")
+    axs[1].set(xlabel = "x (nm)", ylabel = "y (nm)")  
+    plt.tight_layout()
+             
+
+def Plotforces(forces, coords):  
+    nodes = int(len(forces)/2)
+    forces2d = forces.reshape(nodes, 2)
+    start = coords.reshape(nodes, 2)
+    for i in range(nodes):
+        plt.arrow(x = start[i,0], y = start[i,1], 
+        dx = (forces2d[i,0] - start[i,0]), dy = (forces2d[i,1] - start[i,1]),
+        width = 0.7, color="blue") 
+    plt.axis("scaled")
+
+
+Plotforces(np.concatenate([fcoords, fcoords2, fcoords3, fcoords4]), np.concatenate([cartc, cartc2, cartcR2, cartc2R2]))
+
+showforces = False
+trajectories = True
 fig, axs = plt.subplots(2, 1, figsize = (15, 26))
-Plotting(sol, legend = True)
-Plotting(sol2, linestyle="--", colourbar = False, mainmarkercolor="darkblue")
-Plotting(solR2, colourbar = False)
-Plotting(sol2R2, linestyle="--", colourbar = False, mainmarkercolor="darkblue")
+Plotting(solR2, colourbar = False, mainmarkercolor="darkgray", legend = True, forces = fcoords3, showforce = showforces, trajectory=trajectories)#, markersize = 30)
+Plotting(sol2R2, linestyle="--", colourbar = False, mainmarkercolor="darkgray", forces = fcoords4, showforce = showforces, trajectory=trajectories)
+Plotting(sol, forces = fcoords, showforce= showforces, trajectory = trajectories)
+Plotting(sol2, linestyle="--", colourbar = False, forces = fcoords2, showforce = showforces, trajectory = trajectories)
+
 
 
 ## 3D plot
@@ -298,14 +326,14 @@ solplot2D1 = np.reshape(sol2.y.T,(len(sol2.y.T),2*symmetry,2))
 solplot2D2 = np.reshape(solR2.y.T,(len(solR2.y.T),2*symmetry,2))
 solplot2D3 = np.reshape(sol2R2.y.T,(len(sol2R2.y.T),2*symmetry,2))
 
-fig = plt.figure()
-ax = fig.add_subplot(111, projection='3d')
-ax.scatter(solplot2D0[-1, :symmetry,0], solplot2D0[-1, :symmetry,1])
-ax.scatter(solplot2D1[-1, :symmetry,0], solplot2D1[-1, :symmetry,1])
-ax.scatter(solplot2D2[-1, :symmetry,0], solplot2D2[-1, :symmetry,1], zdist)
-ax.scatter(solplot2D3[-1, :symmetry,0], solplot2D3[-1, :symmetry,1], zdist)
+# fig = plt.figure()
+# ax = fig.add_subplot(111, projection='3d')
+# ax.scatter(solplot2D0[-1, :symmetry,0], solplot2D0[-1, :symmetry,1])
+# ax.scatter(solplot2D1[-1, :symmetry,0], solplot2D1[-1, :symmetry,1])
+# ax.scatter(solplot2D2[-1, :symmetry,0], solplot2D2[-1, :symmetry,1], zdist)
+# ax.scatter(solplot2D3[-1, :symmetry,0], solplot2D3[-1, :symmetry,1], zdist)
 
-with open('/home/maria/Documents/NPCPython/NPCexample.csv', 'w', newline='') as csvfile:
+with open('/home/maria/Documents/NPCPython/NPCexampleposter.csv', 'w', newline='') as csvfile:
     spamwriter = csv.writer(csvfile, delimiter=',',
                             quotechar='|', quoting=csv.QUOTE_MINIMAL)
     for i in range(symmetry):
@@ -316,10 +344,62 @@ with open('/home/maria/Documents/NPCPython/NPCexample.csv', 'w', newline='') as 
         spamwriter.writerow(np.append(solplot2D2[-1, i, :], zdist))
     for i in range(symmetry):
         spamwriter.writerow(np.append(solplot2D3[-1, i, :], zdist))
-    #spamwriter.writerow(['Spam', 'Lovely Spam', 'Wonderful Spam'])
+
 
 
 
 #plt.scatter(F[:,0], F[:,1]) 
 #cartc = np.array([1.,0,np.sqrt(2)/2, np.sqrt(2)/2,0,1,-np.sqrt(2)/2,np.sqrt(2)/2,-1,0,-np.sqrt(2)/2,-np.sqrt(2)/2,0,-1,np.sqrt(2)/2,-np.sqrt(2)/2]) #TODO remove
+###### TODO
+global pos
+global pos1
+pos = solplot2D0[:, np.append(np.arange(symmetry), 0), :] # TODO 
+pos1 = solplot2D1[:, np.append(np.arange(symmetry), 0), :] # TODO 
+pos = pos
 
+import matplotlib.animation as animation
+class AnimatedScatter(object):
+    """An animated scatter plot using matplotlib.animations.FuncAnimation."""
+    def __init__(self, pos, numpoints=symmetry+1):
+        self.numpoints = numpoints
+        self.stream = self.data_stream(pos)
+        # Setup the figure and axes...
+        self.fig, self.ax = plt.subplots()
+        # Then setup FuncAnimation.
+        self.ani = animation.FuncAnimation(self.fig, self.update, interval=20, 
+                                          init_func=self.setup_plot, blit=True)
+
+    def setup_plot(self):
+        """Initial drawing of the scatter plot."""
+        x, y, x1, y1 = next(self.stream).T
+        self.line, = self.ax.plot(x, y, marker = "o", color = "black", linestyle = ":") #TODO          
+        self.line2, = self.ax.plot(x1, y1, marker = "o", color = "black", linestyle = ":") #TODO
+    
+        
+        self.ax.axis("scaled")
+        self.ax.axis([-100, 100, -100, 100])
+        return self.line, self.line2, # TODO
+
+    def data_stream(self, pos):
+
+        while True:
+            for i in range(0, len(pos)):
+                xy = pos[i]
+                xy2 = pos1[i]
+                yield np.c_[xy[:,0], xy[:,1], xy2[:,0], xy2[:,1]]
+
+    def update(self, i):
+        """Update the plot."""
+        x, y, x1, y1 = next(self.stream).T
+
+        self.line.set_data(x, y)        #TODO
+        self.line2.set_data(x1, y1)     #TODO
+
+        return self.line, self.line2 # TODO
+
+
+if __name__ == '__main__':
+    a = AnimatedScatter(pos)
+    #a = AnimatedScatter(pos1)
+    ##plt.xlim([-100,100])
+    plt.show()
