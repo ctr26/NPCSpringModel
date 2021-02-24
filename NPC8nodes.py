@@ -16,6 +16,8 @@ import timeit
 import seaborn as sns
 from mpl_toolkits.mplot3d import Axes3D
 import csv
+import matplotlib.animation as animation
+from array import array
 
 ### Parameters
 symmetry = 8 # finegraining with multiples of 8 possible 
@@ -351,18 +353,32 @@ with open('/home/maria/Documents/NPCPython/NPCexampleposter.csv', 'w', newline='
 #plt.scatter(F[:,0], F[:,1]) 
 #cartc = np.array([1.,0,np.sqrt(2)/2, np.sqrt(2)/2,0,1,-np.sqrt(2)/2,np.sqrt(2)/2,-1,0,-np.sqrt(2)/2,-np.sqrt(2)/2,0,-1,np.sqrt(2)/2,-np.sqrt(2)/2]) #TODO remove
 ###### TODO
-global pos
-global pos1
-pos = solplot2D0[:, np.append(np.arange(symmetry), 0), :] # TODO 
-pos1 = solplot2D1[:, np.append(np.arange(symmetry), 0), :] # TODO 
-pos = pos
+global xy
+global xy1
+global xy2
+global xy3
+global xyA
+xy = solplot2D0[:, np.append(np.arange(symmetry), 0), :] # TODO 
+xy1 = solplot2D1[:, np.append(np.arange(symmetry), 0), :] # TODO 
+xy2 = solplot2D2[:, np.append(np.arange(symmetry), 0), :] # TODO 
+xy3 = solplot2D3[:, np.append(np.arange(symmetry), 0), :] # TODO 
 
-import matplotlib.animation as animation
+# xy = solplot2D0[:, :symmetry, :] # TODO 
+# xy1 = solplot2D1[:, :symmetry, :] # TODO 
+# xy2 = solplot2D2[:, :symmetry, :] # TODO 
+# xy3 = solplot2D3[:, :symmetry, :] # TODO 
+
+# xyA = np.zeros((len(xy),2*symmetry,2))
+# for i in range(len(xy)):
+#     xyA[i,:,0] = np.insert(xy[i,:symmetry,0], np.arange(symmetry), 0)
+#     xyA[i,:,1] = np.insert(xy[i,:symmetry,1], np.arange(symmetry), 0)
+
+
 class AnimatedScatter(object):
     """An animated scatter plot using matplotlib.animations.FuncAnimation."""
-    def __init__(self, pos, numpoints=symmetry+1):
+    def __init__(self, xy, numpoints=symmetry+1):
         self.numpoints = numpoints
-        self.stream = self.data_stream(pos)
+        self.stream = self.data_stream(xy)
         # Setup the figure and axes...
         self.fig, self.ax = plt.subplots()
         # Then setup FuncAnimation.
@@ -371,35 +387,79 @@ class AnimatedScatter(object):
 
     def setup_plot(self):
         """Initial drawing of the scatter plot."""
-        x, y, x1, y1 = next(self.stream).T
-        self.line, = self.ax.plot(x, y, marker = "o", color = "black", linestyle = ":") #TODO          
-        self.line2, = self.ax.plot(x1, y1, marker = "o", color = "black", linestyle = ":") #TODO
-    
+#        x, y, x1, y1, x2, y2, x3, y3 = next(self.stream).T
+
+        self.lines = []
+        for index in range(8):
+            self.lobj = self.ax.plot([], [], marker = "o", color = "black", linestyle = ":")
+            self.lines.append(self.lobj)
         
         self.ax.axis("scaled")
         self.ax.axis([-100, 100, -100, 100])
-        return self.line, self.line2, # TODO
+        return [self.lines[i][0] for i in range(8)]#self.lines[0][0], self.lines[1][0], self.lines[2][0], self.lines[3][0], self.lines[4][0], self.lines[5][0],self.lines[6][0], self.lines[7][0],#self.line, self.line1, self.line2, self.line3, self.lineA, self.lineA1, self.lineA2, self.lineA3,
 
     def data_stream(self, pos):
-
         while True:
-            for i in range(0, len(pos)):
-                xy = pos[i]
-                xy2 = pos1[i]
-                yield np.c_[xy[:,0], xy[:,1], xy2[:,0], xy2[:,1]]
+            for i in range(0, len(xy)):
+                x_y = xy[i]
+                x_y1 = xy1[i]
+                x_y2 = xy2[i]
+                x_y3 = xy3[i]
+                yield np.c_[x_y[:,0], x_y[:,1], x_y1[:,0], x_y1[:,1], x_y2[:,0], x_y2[:,1], x_y3[:,0], x_y3[:,1]]
 
     def update(self, i):
         """Update the plot."""
-        x, y, x1, y1 = next(self.stream).T
+        x, y, x1, y1, x2, y2, x3, y3 = next(self.stream).T
+        
 
-        self.line.set_data(x, y)        #TODO
-        self.line2.set_data(x1, y1)     #TODO
+        xa = np.insert(x[:symmetry], np.arange(symmetry), 0)
+        ya = np.insert(y[:symmetry], np.arange(symmetry), 0)
+        x1a = np.insert(x1[:symmetry], np.arange(symmetry), 0)
+        y1a = np.insert(y1[:symmetry], np.arange(symmetry), 0)       
+        x2a = np.insert(x2[:symmetry], np.arange(symmetry), 0)
+        y2a = np.insert(y2[:symmetry], np.arange(symmetry), 0)        
+        x3a = np.insert(x3[:symmetry], np.arange(symmetry), 0)
+        y3a = np.insert(y3[:symmetry], np.arange(symmetry), 0)
+        
+        # n = 2 # TODO 
+        # for ni in range(1, n+1): # neighbours to connect to
+        #     for i in range(symmetry): # node to connect from 
+        #         axs[1].plot((x[i], x[(i+ni)%symmetry]), (y[i], y[(i+ni)%symmetry]))
 
-        return self.line, self.line2 # TODO
+        xlist = [x, x1, x2, x3, xa, x1a, x2a, x3a]
+        ylist = [y, y1, y2, y3, ya, y1a, y2a, y3a]
+
+                
+        for lnum, self.line in enumerate(self.lines):
+            self.line[0].set_data(xlist[lnum], ylist[lnum]) #TODO: indexed
+
+        
+        return [self.lines[i][0] for i in range(8)]#self.lines[0][0], self.lines[1][0], self.lines[2][0], self.lines[3][0], self.lines[4][0], self.lines[5][0],self.lines[6][0], self.lines[7][0], #self.line, self.line1, self.line2, self.line3, self.lineA, self.lineA1, self.lineA2, self.lineA3,
 
 
 if __name__ == '__main__':
-    a = AnimatedScatter(pos)
-    #a = AnimatedScatter(pos1)
-    ##plt.xlim([-100,100])
+    a = AnimatedScatter(xy)
     plt.show()
+
+
+x = np.random.random(3)
+y = np.random.random(3)
+x1 = np.random.random(3)
+y1 = np.random.random(3)
+fig, ax = plt.subplots()
+
+ax.axis([-1, 1, -1, 1])
+
+lines = []
+for index in range(2):
+    lobj = ax.plot([], [], marker = "o", color = "black", linestyle = ":")
+    lines.append(lobj)
+
+# for line in lines:
+#     line[0].set_data([],[])
+    
+xlist = [x, x1]
+ylist = [y, y1]
+for lnum, line in enumerate(lines):
+    line[0].set_data(xlist[lnum],ylist[lnum]) 
+plt.show()
