@@ -17,13 +17,14 @@ import seaborn as sns
 from mpl_toolkits.mplot3d import Axes3D
 import csv
 import matplotlib.animation as animation
-from array import array
+from IPython.display import HTML
+from matplotlib import rc
 
 ### Parameters
 symmetry = 8 # finegraining with multiples of 8 possible 
-d = 0.1 # damping 
+d = 1 # damping 
 n = 2 # n maximum distant neighbour to connect on each side 
-magnitude = 50 # Average magnitude of distortion per ring
+magnitude = 25 # Average magnitude of distortion per ring
 rings = 2 # Number of rings
 ka = 0.5 # Spring constant anchor springs
 
@@ -199,8 +200,8 @@ fcoords3 = Initialcoords(la, forces = randf3, corneroffset=corneroffset2, ringof
 fcoords4 = Initialcoords(la, forces = randf4, corneroffset = corneroffset3, ringoffset=ringoffset)
 
 start = timeit.default_timer()
-tspan = [0,200]
-teval = np.arange(0,200,0.1)
+tspan = [0,30]
+teval = np.arange(0,30,0.1)
 # Solve ODE, ring 1 - 4 
 sol = solve_ivp(NPC, tspan, y0, t_eval=teval, method='RK45', args=(Lrest, la, K, ka, randf, d, n, symmetry))
 sol2 = solve_ivp(NPC, tspan, y02, t_eval=teval, method='RK45', args=(Lrest2, la2, K, ka, randf2, d, n, symmetry))
@@ -373,30 +374,46 @@ xy3 = solplot2D3[:, np.append(np.arange(symmetry), 0), :] # TODO
 #     xyA[i,:,0] = np.insert(xy[i,:symmetry,0], np.arange(symmetry), 0)
 #     xyA[i,:,1] = np.insert(xy[i,:symmetry,1], np.arange(symmetry), 0)
 
-
+#%matplotlib qt # Run in console if python doesn't show plot 
 class AnimatedScatter(object):
     """An animated scatter plot using matplotlib.animations.FuncAnimation."""
     def __init__(self, xy, numpoints=symmetry+1):
         self.numpoints = numpoints
         self.stream = self.data_stream(xy)
         # Setup the figure and axes...
-        self.fig, self.ax = plt.subplots()
+        self.fig, self.ax = plt.subplots(figsize = (9, 10))
+        plt.rcParams.update({'font.size': 20})
         # Then setup FuncAnimation.
-        self.ani = animation.FuncAnimation(self.fig, self.update, interval=20, 
+        self.ani = animation.FuncAnimation(self.fig, self.update, interval=20, frames = len(xy),
                                           init_func=self.setup_plot, blit=True)
+        #HTML(self.ani.to_html5_video())
+        self.ani.save("Damping1.mp4", dpi = 250)
 
     def setup_plot(self):
         """Initial drawing of the scatter plot."""
 #        x, y, x1, y1, x2, y2, x3, y3 = next(self.stream).T
+        # 4 to plot x-y coords
+        # 4 to plot anchor springs 
+        # n * symmetry * rings to plot circumferential spring
 
         self.lines = []
-        for index in range(8):
-            self.lobj = self.ax.plot([], [], marker = "o", color = "black", linestyle = ":")
+        for index in range(int(8 + 8*2*4)):
+            if (index <= 1):
+                self.lobj = self.ax.plot([], [], marker = "o", color = "gray", markerfacecolor = "gray", linestyle = "-", markersize = 15)
+            elif (index > 1 and index <=3):
+                self.lobj = self.ax.plot([], [], marker = "o", color = "gray", markerfacecolor = "black", linestyle = "-", markersize = 15)
+            elif (index > 3 and index <= 7):
+                self.lobj = self.ax.plot([], [], marker = "", color = "lightgray", linestyle = "-")
+
+            else:
+                self.lobj = self.ax.plot([], [], marker = "", color = "gray", linestyle = "-")
+
             self.lines.append(self.lobj)
         
         self.ax.axis("scaled")
-        self.ax.axis([-100, 100, -100, 100])
-        return [self.lines[i][0] for i in range(8)]#self.lines[0][0], self.lines[1][0], self.lines[2][0], self.lines[3][0], self.lines[4][0], self.lines[5][0],self.lines[6][0], self.lines[7][0],#self.line, self.line1, self.line2, self.line3, self.lineA, self.lineA1, self.lineA2, self.lineA3,
+        self.ax.set(xlabel = "x (nm)", ylabel = "y (nm)")  
+        self.ax.axis([-80, 80, -80, 80])
+        return [self.lines[i][0] for i in range(int(8 + 8*2*4))]#self.lines[0][0], self.lines[1][0], self.lines[2][0], self.lines[3][0], self.lines[4][0], self.lines[5][0],self.lines[6][0], self.lines[7][0],#self.line, self.line1, self.line2, self.line3, self.lineA, self.lineA1, self.lineA2, self.lineA3,
 
     def data_stream(self, pos):
         while True:
@@ -421,25 +438,34 @@ class AnimatedScatter(object):
         x3a = np.insert(x3[:symmetry], np.arange(symmetry), 0)
         y3a = np.insert(y3[:symmetry], np.arange(symmetry), 0)
         
-        # n = 2 # TODO 
-        # for ni in range(1, n+1): # neighbours to connect to
-        #     for i in range(symmetry): # node to connect from 
-        #         axs[1].plot((x[i], x[(i+ni)%symmetry]), (y[i], y[(i+ni)%symmetry]))
+
 
         xlist = [x, x1, x2, x3, xa, x1a, x2a, x3a]
         ylist = [y, y1, y2, y3, ya, y1a, y2a, y3a]
 
                 
         for lnum, self.line in enumerate(self.lines):
-            self.line[0].set_data(xlist[lnum], ylist[lnum]) #TODO: indexed
+            if lnum >= len(xlist):
+                break
+            self.line[0].set_data(xlist[lnum], ylist[lnum]) 
 
+        n = 2 # TODO 
+        count = len(xlist)
+        for lnum in range(4):
+            for ni in range(1, n+1): # neighbours to connect to
+                for i in range(symmetry): # node to connect from 
+                    self.lines[count][0].set_data((xlist[lnum][i], xlist[lnum][(i+ni)%symmetry]), (ylist[lnum][i], ylist[lnum][(i+ni)%symmetry]))
+                    count += 1
         
-        return [self.lines[i][0] for i in range(8)]#self.lines[0][0], self.lines[1][0], self.lines[2][0], self.lines[3][0], self.lines[4][0], self.lines[5][0],self.lines[6][0], self.lines[7][0], #self.line, self.line1, self.line2, self.line3, self.lineA, self.lineA1, self.lineA2, self.lineA3,
+        return [self.lines[i][0] for i in range(int(8 + 8*2*4))]#self.lines[0][0], self.lines[1][0], self.lines[2][0], self.lines[3][0], self.lines[4][0], self.lines[5][0],self.lines[6][0], self.lines[7][0], #self.line, self.line1, self.line2, self.line3, self.lineA, self.lineA1, self.lineA2, self.lineA3,
 
 
 if __name__ == '__main__':
     a = AnimatedScatter(xy)
+
     plt.show()
+
+
 
 
 x = np.random.random(3)
@@ -463,3 +489,8 @@ ylist = [y, y1]
 for lnum, line in enumerate(lines):
     line[0].set_data(xlist[lnum],ylist[lnum]) 
 plt.show()
+
+for i in range(10):
+   if(i >5):
+       break
+   print(i)
