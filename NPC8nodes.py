@@ -19,13 +19,14 @@ import csv
 import matplotlib.animation as animation
 from IPython.display import HTML
 from matplotlib import rc
+from matplotlib.patches import FancyArrowPatch
 
 ### Parameters
 symmetry = 8 # finegraining with multiples of 8 possible 
-d = 1 # damping 
+d = 1#0.1 # damping 
 n = 2 # n maximum distant neighbour to connect on each side 
 magnitude = 25 # Average magnitude of distortion per ring
-rings = 2 # Number of rings
+#rings = 1 # Number of rings TODO: Doesn't do anything currently
 ka = 0.5 # Spring constant anchor springs
 
 ### NPC Measures. Here rough measures for Nup107, adapted from SMAP. TODO: Research measures. 
@@ -39,7 +40,7 @@ corneroffset0 = 0
 corneroffset1 = 0.2069 + np.random.normal(0,0) # TODO: Number a rough estimate adapted from SMAP code. Research needed. 
 
 # Ring 2 
-ringoffset = 0.1309 + np.random.normal(0,0) # Offset between nucleoplamic and cytoplasmic ring. TODO: Number a rough estimate adapted from SMAP code. Research needed. 
+ringoffset = 0.17#0.1309 + np.random.normal(0,0) # Offset between nucleoplamic and cytoplasmic ring. TODO: Number a rough estimate adapted from SMAP code. Research needed. 
 corneroffset2 = 0.0707 + np.random.normal(0,0) # TODO: Number a rough estimate adapted from SMAP code. Research needed. 
 corneroffset3 = 0.2776 + np.random.normal(0,0) # TODO: Number a rough estimate adapted from SMAP code. Research needed. 
 ### 
@@ -147,9 +148,10 @@ def ForcesMultivariateNorm(*allringcords, symmetry = 8, magnitude = 50): # TODO:
     ## Returns ## 
     For each ring, an array of forces applied to each node
     '''
+    #allcoords = np.asarray([cartc, cartc2, cartcR2, cartc2R2])#TODO
     allcoords = np.asarray(allringcords) 
     nrings = len(allringcords) # number of rings
-    
+    #nrings = 4 # TODO
     allcoords = allcoords.reshape(symmetry*nrings, 2)
   
     AllD = np.zeros((symmetry*nrings, symmetry*nrings)) # all distances
@@ -162,19 +164,23 @@ def ForcesMultivariateNorm(*allringcords, symmetry = 8, magnitude = 50): # TODO:
 
     LInv = AllD.max() - AllD # invert distances  
     
+    global cov
     cov = [] # covariance matrix 
     for i in range(symmetry*nrings):
         cov.append(list(LInv[i]/AllD.max()))
             
     rng = np.random.default_rng(seed = 2) # TODO remove seed
-    F = rng.multivariate_normal(mean, cov)
     
+    global F
+    F = rng.multivariate_normal(mean, cov)#, size = 1000) # TODO
+    
+
     initialmag = sum(abs(F))
     
     if (initialmag != 0):
         F = nrings*magnitude/initialmag * F
     
-    return np.array_split(F, nrings)
+    return np.split(F, nrings)#np.array_split(F, nrings)
   
 
 def returnparameters(la, corneroffset = 0, ringoffset = 0, symmetry = symmetry):
@@ -191,17 +197,19 @@ cartc2, Lrest2, _, y02 = returnparameters(la = la2, corneroffset = corneroffset1
 cartcR2, LrestR2, _, y0R2 = returnparameters(la = la2, corneroffset=corneroffset2, ringoffset=ringoffset) # TODO: Number a rough estimate adapted from SMAP code. Research needed. 
 cartc2R2, Lrest2R2, _, y02R2 = returnparameters(la = la, corneroffset = corneroffset3, ringoffset=ringoffset) # TODO: Number a rough estimate adapted from SMAP code. Research needed. 
 
+#randf = ForcesMultivariateNorm(cartc)
 randf, randf2, randf3, randf4 = ForcesMultivariateNorm(cartc, cartc2, cartcR2, cartc2R2, symmetry = symmetry, magnitude = magnitude)   
 
-
 fcoords = Initialcoords(la, forces = randf, corneroffset = corneroffset0)
-fcoords2 = Initialcoords(la, forces = randf2, corneroffset = corneroffset1)
-fcoords3 = Initialcoords(la, forces = randf3, corneroffset=corneroffset2, ringoffset=ringoffset)
+fcoords2 = Initialcoords(la2, forces = randf2, corneroffset = corneroffset1)
+fcoords3 = Initialcoords(la2, forces = randf3, corneroffset=corneroffset2, ringoffset=ringoffset)
 fcoords4 = Initialcoords(la, forces = randf4, corneroffset = corneroffset3, ringoffset=ringoffset)
 
 start = timeit.default_timer()
-tspan = [0,30]
-teval = np.arange(0,30,0.1)
+tlast = 40
+tspan = [0,tlast]
+#teval = np.arange(0,tlast,0.2)
+teval = None
 # Solve ODE, ring 1 - 4 
 sol = solve_ivp(NPC, tspan, y0, t_eval=teval, method='RK45', args=(Lrest, la, K, ka, randf, d, n, symmetry))
 sol2 = solve_ivp(NPC, tspan, y02, t_eval=teval, method='RK45', args=(Lrest2, la2, K, ka, randf2, d, n, symmetry))
@@ -212,7 +220,7 @@ stop = timeit.default_timer()
 print('Time: ', stop - start) 
 
 #### Plotting ####################################################################
-plt.rcParams.update({'font.size': 35})
+plt.rcParams.update({'font.size': 50})
 
 def Plotting(sol, symmetry = symmetry, n = n,  linestyle = "-", legend = False, trajectory = True, colourcode = True, colourbar = True, mainmarkercolor = "black", markersize = 25, forces = 0, showforce = False): # TODO 
     '''
@@ -253,7 +261,7 @@ def Plotting(sol, symmetry = symmetry, n = n,  linestyle = "-", legend = False, 
     for ni in range(1, n+1): # neighbours to connect to
         for i in range(symmetry): # node to connect from 
             axs[1].plot(solplot2D[frame, (i, (i+ni)%symmetry), 0], solplot2D[frame, (i, (i+ni)%symmetry), 1], 
-            linestyle = ":", marker = "", color="gray")
+            linestyle = ":", marker = "", color="gray")#, linewidth = 5)
 
     # Trajectories 
     if (trajectory):
@@ -301,11 +309,12 @@ def Plotting(sol, symmetry = symmetry, n = n,  linestyle = "-", legend = False, 
              
 
 def Plotforces(forces, coords):  
+    fig, ax1 = plt.subplots(1,1, figsize = (10, 10))
     nodes = int(len(forces)/2)
     forces2d = forces.reshape(nodes, 2)
     start = coords.reshape(nodes, 2)
-    for i in range(nodes):
-        plt.arrow(x = start[i,0], y = start[i,1], 
+    for i in range(int(nodes/2)):
+        ax1.arrow(x = start[i,0], y = start[i,1], 
         dx = (forces2d[i,0] - start[i,0]), dy = (forces2d[i,1] - start[i,1]),
         width = 0.7, color="blue") 
     plt.axis("scaled")
@@ -313,28 +322,65 @@ def Plotforces(forces, coords):
 
 Plotforces(np.concatenate([fcoords, fcoords2, fcoords3, fcoords4]), np.concatenate([cartc, cartc2, cartcR2, cartc2R2]))
 
+
 showforces = False
-trajectories = True
+trajectories = False
 fig, axs = plt.subplots(2, 1, figsize = (15, 26))
-Plotting(solR2, colourbar = False, mainmarkercolor="darkgray", legend = True, forces = fcoords3, showforce = showforces, trajectory=trajectories)#, markersize = 30)
+Plotting(solR2, colourbar = False, mainmarkercolor="darkgray", legend = False, forces = fcoords3, showforce = showforces, trajectory=trajectories)#, markersize = 30)
 Plotting(sol2R2, linestyle="--", colourbar = False, mainmarkercolor="darkgray", forces = fcoords4, showforce = showforces, trajectory=trajectories)
-Plotting(sol, forces = fcoords, showforce= showforces, trajectory = trajectories)
+Plotting(sol,  forces = fcoords, showforce= showforces, trajectory = trajectories)
 Plotting(sol2, linestyle="--", colourbar = False, forces = fcoords2, showforce = showforces, trajectory = trajectories)
 
 
-
-## 3D plot
 solplot2D0 = np.reshape(sol.y.T,(len(sol.y.T),2*symmetry,2)) # 2D array of positions and velocities over time 
 solplot2D1 = np.reshape(sol2.y.T,(len(sol2.y.T),2*symmetry,2))
 solplot2D2 = np.reshape(solR2.y.T,(len(solR2.y.T),2*symmetry,2))
 solplot2D3 = np.reshape(sol2R2.y.T,(len(sol2R2.y.T),2*symmetry,2))
 
-# fig = plt.figure()
-# ax = fig.add_subplot(111, projection='3d')
-# ax.scatter(solplot2D0[-1, :symmetry,0], solplot2D0[-1, :symmetry,1])
-# ax.scatter(solplot2D1[-1, :symmetry,0], solplot2D1[-1, :symmetry,1])
-# ax.scatter(solplot2D2[-1, :symmetry,0], solplot2D2[-1, :symmetry,1], zdist)
-# ax.scatter(solplot2D3[-1, :symmetry,0], solplot2D3[-1, :symmetry,1], zdist)
+## 3D plot
+frame = 0 # 0 is the first frame, -1 is the last frame
+fig = plt.figure(figsize = (15,15))
+ax = fig.add_subplot(111, projection='3d')
+
+ax.scatter(solplot2D0[frame, :symmetry,0], solplot2D0[frame, :symmetry,1], s = 200, c = "black")
+ax.scatter(solplot2D1[frame, :symmetry,0], solplot2D1[frame, :symmetry,1], s = 200, c = "black")
+ax.scatter(solplot2D2[frame, :symmetry,0], solplot2D2[frame, :symmetry,1], zdist, s = 200, c = "gray")
+ax.scatter(solplot2D3[frame, :symmetry,0], solplot2D3[frame, :symmetry,1], zdist, s = 200, c = "gray")
+
+# 3D arrows
+forces2d = fcoords.reshape(symmetry, 2)
+forces2d2 = fcoords2.reshape(symmetry, 2)
+forces2d3 = fcoords3.reshape(symmetry, 2)
+forces2d4 = fcoords4.reshape(symmetry, 2)
+
+linewidth = 3
+normalize = True
+for i in range(0, symmetry):
+    ax.quiver(solplot2D0[0,i,0], solplot2D0[0,i,1], 0, forces2d[i,0], forces2d[i,1], 0, length = randf[i], normalize = normalize, linewidth = linewidth , edgecolor = "blue")#(forces2d[i,0] - solplot2D0[0,i,0]),(forces2d[i,1] - solplot2D0[0,i,1]), 0)   
+    ax.quiver(solplot2D1[0,i,0], solplot2D1[0,i,1], 0, forces2d2[i,0], forces2d2[i,1], 0, length = randf2[i], normalize = normalize, linewidth = linewidth, edgecolor = "blue")#(forces2d[i,0] - solplot2D0[0,i,0]),(forces2d[i,1] - solplot2D0[0,i,1]), 0)   
+    ax.quiver(solplot2D2[0,i,0], solplot2D2[0,i,1], zdist, forces2d3[i,0], forces2d3[i,1], 0, length = randf3[i], normalize = normalize, linewidth = linewidth, edgecolor = "blue")#(forces2d[i,0] - solplot2D0[0,i,0]),(forces2d[i,1] - solplot2D0[0,i,1]), 0)   
+    ax.quiver(solplot2D3[0,i,0], solplot2D3[0,i,1], zdist, forces2d4[i,0], forces2d4[i,1], 0, length = randf4[i], normalize = normalize, linewidth = linewidth, edgecolor = "blue")#(forces2d[i,0] - solplot2D0[0,i,0]),(forces2d[i,1] - solplot2D0[0,i,1]), 0)   
+
+
+
+ax.set_xlabel('x (nm)', labelpad = 30)
+ax.set_ylabel('y (nm)', labelpad = 30)
+ax.set_zlabel('z (nm)', labelpad = 40)
+ax.xaxis.pane.fill = False
+ax.yaxis.pane.fill = False
+ax.zaxis.pane.fill = False
+
+# Now set color to white (or whatever is "invisible")
+ax.xaxis.pane.set_edgecolor('w')
+ax.yaxis.pane.set_edgecolor('w')
+ax.zaxis.pane.set_edgecolor('w')
+
+# Bonus: To get rid of the grid as well:
+ax.grid(False)
+plt.show()
+    
+
+
 
 with open('/home/maria/Documents/NPCPython/NPCexampleposter.csv', 'w', newline='') as csvfile:
     spamwriter = csv.writer(csvfile, delimiter=',',
@@ -384,10 +430,10 @@ class AnimatedScatter(object):
         self.fig, self.ax = plt.subplots(figsize = (9, 10))
         plt.rcParams.update({'font.size': 20})
         # Then setup FuncAnimation.
-        self.ani = animation.FuncAnimation(self.fig, self.update, interval=20, frames = len(xy),
+        self.ani = animation.FuncAnimation(self.fig, self.update, interval=15, frames = len(xy),
                                           init_func=self.setup_plot, blit=True)
         #HTML(self.ani.to_html5_video())
-        self.ani.save("Damping1.mp4", dpi = 250)
+        self.ani.save("Damping0.mp4", dpi = 250)
 
     def setup_plot(self):
         """Initial drawing of the scatter plot."""
@@ -461,36 +507,42 @@ class AnimatedScatter(object):
 
 
 if __name__ == '__main__':
-    a = AnimatedScatter(xy)
+    #a = AnimatedScatter(xy)
 
     plt.show()
 
 
 
 
-x = np.random.random(3)
-y = np.random.random(3)
-x1 = np.random.random(3)
-y1 = np.random.random(3)
-fig, ax = plt.subplots()
+# x = np.random.random(3)
+# y = np.random.random(3)
+# x1 = np.random.random(3)
+# y1 = np.random.random(3)
+# fig, ax = plt.subplots()
 
-ax.axis([-1, 1, -1, 1])
+# ax.axis([-1, 1, -1, 1])
 
-lines = []
-for index in range(2):
-    lobj = ax.plot([], [], marker = "o", color = "black", linestyle = ":")
-    lines.append(lobj)
+# lines = []
+# for index in range(2):
+#     lobj = ax.plot([], [], marker = "o", color = "black", linestyle = ":")
+#     lines.append(lobj)
 
-# for line in lines:
-#     line[0].set_data([],[])
+# # for line in lines:
+# #     line[0].set_data([],[])
     
-xlist = [x, x1]
-ylist = [y, y1]
-for lnum, line in enumerate(lines):
-    line[0].set_data(xlist[lnum],ylist[lnum]) 
-plt.show()
+# xlist = [x, x1]
+# ylist = [y, y1]
+# for lnum, line in enumerate(lines):
+#     line[0].set_data(xlist[lnum],ylist[lnum]) 
+# plt.show()
 
-for i in range(10):
-   if(i >5):
-       break
-   print(i)
+# for i in range(10):
+#    if(i >5):
+#        break
+#    print(i)
+   
+# plt.rcParams.update({'font.size': 2})
+# fig, axs = plt.subplots(32, 32, figsize = (16,16))
+# for i in range(32):
+#    for j in range(32):
+#        axs[i,j].scatter(F[:,i], F[:,j], s = 4)
