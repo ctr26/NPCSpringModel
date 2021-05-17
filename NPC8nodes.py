@@ -22,202 +22,268 @@ from matplotlib import rc
 from matplotlib.patches import FancyArrowPatch
 
 ### Parameters
-symmetry = 8 # finegraining with multiples of 8 possible 
-d = 1#0.1 # damping 
-n = 2 # n maximum distant neighbour to connect on each side 
-magnitude = 25 # Average magnitude of distortion per ring
-#rings = 1 # Number of rings TODO: Doesn't do anything currently
-ka = 0.5 # Spring constant anchor springs
-
-### NPC Measures. Here rough measures for Nup107, adapted from SMAP. TODO: Research measures. 
-la = 50 # TODO: Number a rough estimate adapted from SMAP code. Research needed. 
-la2 = 54 # TODO: Number a rough estimate adapted from SMAP code. Research needed. 
-
-zdist = -50 # distance between cytoplasmic and nucleoplasmic ring TODO: realistic number
-
-# Ring 1
+symmetry = 8
+d = 1
+n = 3 
+magnitude = 10
+ka = 1
+la = 50
 corneroffset0 = 0
-corneroffset1 = 0.2069 + np.random.normal(0,0) # TODO: Number a rough estimate adapted from SMAP code. Research needed. 
+ringoffset = 0
 
-# Ring 2 
-ringoffset = 0.17#0.1309 + np.random.normal(0,0) # Offset between nucleoplamic and cytoplasmic ring. TODO: Number a rough estimate adapted from SMAP code. Research needed. 
-corneroffset2 = 0.0707 + np.random.normal(0,0) # TODO: Number a rough estimate adapted from SMAP code. Research needed. 
-corneroffset3 = 0.2776 + np.random.normal(0,0) # TODO: Number a rough estimate adapted from SMAP code. Research needed. 
-### 
+solution = DeformNPC(symmetry, d, n, magnitude, ka, la, corneroffset0, ringoffset).sol
 
-if(n > symmetry/2):
-    n = int(np.floor(symmetry/2))
-    warn("Selected number of neighbours n too large. n has been set to " + str(n) + ".")
+class DeformNPC:
+#    symmetry = 8 # finegraining with multiples of 8 possible 
+#    d = 1#0.1 # damping 
+#    n = 2 # n maximum distant neighbour to connect on each side 
+#    magnitude = 25 # Average magnitude of distortion per ring   
     
-### Functions 
 
-def NPC(t, y, Lrest, la, K, ka, randf, d, n, symmetry = 8):
-    '''
-    t: time points 
-    y: values of the solution at t 
-    Lrest: Circulant matrix of resting lengths of all springs 
-    K: Circulant matrix of all radial spring constants 
-    ka: Spring constants of anchor springs 
-    randf: array of forces (length = symmetry) to be applied in radial direction to each node 
-    d: Damping factor 
-    n: Number of connected neighbours in cw and ccw direction for each node 
-    symmetry (default: 8): Number of nodes 
-    output: solutions at t. x and y components of positions and velocities of each node for each time-step 
-    '''
-    v = np.reshape(y[2*symmetry:], (symmetry, 2))
-    x = np.reshape(y[:2*symmetry], (symmetry, 2))
-
-    anc = np.array([0., 0.]) # coordinates of anchor node   
-    F = np.zeros((symmetry, 2)) # Forces
-    
-    for i in range(symmetry): # TODO test
-        F[i] = randf[i]*x[i] / np.linalg.norm([x[i], anc])
-
-    allaccarray = np.zeros((symmetry, 2)) # array for accelerations of node 0 - 7
-    
-    for i in range(symmetry): # i indicates the reference node        
-        accarray = np.array([0., 0.]) # initiate acceleration array for each node i 
         
-        for j in [k for k in range(-n, n+1) if k != 0]: # j is neighbour nodes -n to +n relative to i, skipping 0 (0=i)            
-            jnew = (i+j)%symmetry 
-            accarray += K[i][jnew]  * (x[i]-x[jnew])/np.linalg.norm(x[i]-x[jnew]) * (Lrest[i][jnew] - np.linalg.norm(x[i]-x[jnew]))
 
-        accarray += ka * (x[i] - anc)/np.linalg.norm(x[i] - anc) * (la - np.linalg.norm(x[i] - anc)) #anchor
-        accarray = F[i] + accarray - d*v[i]  # external force and damping
-        allaccarray[i] = accarray 
-
-    dxdt = np.concatenate((v.flatten(), allaccarray.flatten()))                                                                
-    return dxdt
-
-
-def Pol2cart(rho, phi):
-    '''Transforms polar coordinates of a point (rho: radius, phi: angle) to 2D cartesian coordinates.
-    '''
-    x = rho * np.cos(phi)
-    y = rho * np.sin(phi)
-    return(x, y)
-
-def Initialcoords(la, symmetry = symmetry, forces = np.zeros(symmetry), corneroffset = 0, ringoffset = 0): #TODO real-data coordinates
-    '''
-    Generates cartesian coordinates of the NPC given radius and symmetry 
-    ## Input ##
-    la: NPC Radius
-    symmetry: Number of corners
-    angleoffset (rad): Rotates the NPC by the given offset. Default 0
-    ## Return values ##
-    Cartesian coordinates in 1D and 2D array format 
-    '''
-    angle = 0.
-    cartc = np.zeros(2*symmetry) 
+    #rings = 1 # Number of rings TODO: Doesn't do anything currently
+#    ka = 0.5 # Spring constant anchor springs
     
-    for i in range(0, 2*symmetry, 2): # skip every other entry to populate it with y-coords
-        x, y = Pol2cart(la + forces[int(i/2)], angle+corneroffset+ringoffset)
-        cartc[i] = x
-        cartc[i+1] = y
-        angle += 2*np.pi/symmetry
-    return cartc
-
-
-def Springlengths(cartc, symmetry): 
-    '''Compute lengths of springs from coordinates and returns circulant matrix
-    '''
-    cart2D = cartc.reshape(symmetry,2)
-    l = np.zeros(symmetry)
-    for i in range(len(l)):
-        l[i] = np.linalg.norm(cart2D[0, :] - cart2D[i, :])      
-    return circulant(l)
-
-
-def Springconstants(symmetry): # TODO: More variable spring constants? 
-    "Returns circulant matrix of spring constants "
-    k = np.ones(int(np.floor(symmetry/2)))
-    if(symmetry%2 == 0): #if symmetry is even
-        k[-1] = k[-1]/2 # springs that connect opposite corners will be double-counted. Spring constant thus halved 
-        K = circulant(np.append(0, np.append(k, np.flip(k[:-1]))))
-    else: #if symmetry is odd 
-        K = circulant(np.append(0, [k, np.flip(k)]))
-    return K
-
-
-def ForcesMultivariateNorm(*allringcords, symmetry = 8, magnitude = 50): # TODO: include distances to nucleoplasmic ring 
-    '''
-    Returns array of Forces that are later applied in radial direction to the NPC corners
-    ## Input ## 
-    *coordring: Initial coordinates of nodes for an arbitrary number of rings. 
-    magnitude: Total magnitude of distortion. Default is 50. 
-    ## Returns ## 
-    For each ring, an array of forces applied to each node
-    '''
-    #allcoords = np.asarray([cartc, cartc2, cartcR2, cartc2R2])#TODO
-    allcoords = np.asarray(allringcords) 
-    nrings = len(allringcords) # number of rings
-    #nrings = 4 # TODO
-    allcoords = allcoords.reshape(symmetry*nrings, 2)
-  
-    AllD = np.zeros((symmetry*nrings, symmetry*nrings)) # all distances
+    ### NPC Measures. Here rough measures for Nup107, adapted from SMAP. TODO: Research measures. 
+#    la = 50 # TODO: Number a rough estimate adapted from SMAP code. Research needed. 
+#    la2 = 54 # TODO: Number a rough estimate adapted from SMAP code. Research needed. 
     
-    for i in range(symmetry*nrings):
-        for j in range(symmetry*nrings):
-            AllD[i, j] = np.linalg.norm(allcoords[i, :] - allcoords[j, :])
-
-    mean = list(np.zeros(symmetry*nrings)) # Mean of the normal distribution
-
-    LInv = AllD.max() - AllD # invert distances  
+#    zdist = -50 # distance between cytoplasmic and nucleoplasmic ring TODO: realistic number. move outside of class?
     
-    global cov
-    cov = [] # covariance matrix 
-    for i in range(symmetry*nrings):
-        cov.append(list(LInv[i]/AllD.max()))
+    # Ring 1
+#    corneroffset0 = 0
+#    corneroffset1 = 0.2069 + np.random.normal(0,0) # TODO: Number a rough estimate adapted from SMAP code. Research needed. 
+    
+    # Ring 2 
+#    ringoffset = 0.17#0.1309 + np.random.normal(0,0) # Offset between nucleoplamic and cytoplasmic ring. TODO: Number a rough estimate adapted from SMAP code. Research needed. 
+#    corneroffset2 = 0.0707 + np.random.normal(0,0) # TODO: Number a rough estimate adapted from SMAP code. Research needed. 
+#    corneroffset3 = 0.2776 + np.random.normal(0,0) # TODO: Number a rough estimate adapted from SMAP code. Research needed. 
+    ### 
+
+    def __init__(self, symmetry, d, n, magnitude, ka, la, corneroffset0, ringoffset):
+        self.symmetry = symmetry
+        self.d = d
+        self.n = n
+        self.magnitude = magnitude
+        self.ka = ka
+        self.la = la
+        self.corneroffset0 = corneroffset0
+        self.ringoffset = ringoffset
+
+    
+        if(n > symmetry/2):
+            self.n = int(np.floor(symmetry/2))
+            warn("Selected number of neighbours n too large. n has been set to " + str(n) + ".")
+        cartc, Lrest, K, y0 = self.returnparameters(la, corneroffset = 0, ringoffset = 0, symmetry = self.symmetry)
+        randf = self.ForcesMultivariateNorm(cartc)
+        
+        tlast = 40
+        tspan = [0,tlast]
+    #teval = np.arange(0,tlast,0.2)
+        teval = None
+    
+        # Solve ODE, ring 1 - 4 
+        self.sol = solve_ivp(self.NPC, tspan, y0, t_eval=teval, method='RK45', args=(Lrest, la, K, ka, randf, d, n, symmetry))
             
-    rng = np.random.default_rng(seed = 2) # TODO remove seed
+    ### Functions 
     
-    global F
-    F = rng.multivariate_normal(mean, cov)#, size = 1000) # TODO
+    def NPC(self,t, y, Lrest, la, K, ka, randf, d, n, symmetry = 8):
+        '''
+        t: time points 
+        y: values of the solution at t 
+        Lrest: Circulant matrix of resting lengths of all springs 
+        K: Circulant matrix of all radial spring constants 
+        ka: Spring constants of anchor springs 
+        randf: array of forces (length = symmetry) to be applied in radial direction to each node 
+        d: Damping factor 
+        n: Number of connected neighbours in cw and ccw direction for each node 
+        symmetry (default: 8): Number of nodes 
+        output: solutions at t. x and y components of positions and velocities of each node for each time-step 
+        '''
+        v = np.reshape(y[2*symmetry:], (symmetry, 2))
+        x = np.reshape(y[:2*symmetry], (symmetry, 2))
+    
+        anc = np.array([0., 0.]) # coordinates of anchor node   
+        F = np.zeros((symmetry, 2)) # Forces
+        
+        for i in range(symmetry): # TODO test
+            F[i] = randf[i]*x[i] / np.linalg.norm([x[i], anc])
+    
+        allaccarray = np.zeros((symmetry, 2)) # array for accelerations of node 0 - 7
+        
+        for i in range(symmetry): # i indicates the reference node        
+            accarray = np.array([0., 0.]) # initiate acceleration array for each node i 
+            
+            for j in [k for k in range(-n, n+1) if k != 0]: # j is neighbour nodes -n to +n relative to i, skipping 0 (0=i)            
+                jnew = (i+j)%symmetry 
+                accarray += K[i][jnew]  * (x[i]-x[jnew])/np.linalg.norm(x[i]-x[jnew]) * (Lrest[i][jnew] - np.linalg.norm(x[i]-x[jnew]))
+    
+            accarray += ka * (x[i] - anc)/np.linalg.norm(x[i] - anc) * (la - np.linalg.norm(x[i] - anc)) #anchor
+            accarray = F[i] + accarray - d*v[i]  # external force and damping
+            allaccarray[i] = accarray 
+    
+        dxdt = np.concatenate((v.flatten(), allaccarray.flatten()))                                                                
+        return dxdt
+    
+    
+    def Pol2cart(self, rho, phi):
+        '''Transforms polar coordinates of a point (rho: radius, phi: angle) to 2D cartesian coordinates.
+        '''
+        x = rho * np.cos(phi)
+        y = rho * np.sin(phi)
+        return(x, y)
+    
+    def Initialcoords(self, la, symmetry = 8, corneroffset = 0, ringoffset = 0): #TODO real-data coordinates
+        '''
+        Generates cartesian coordinates of the NPC given radius and symmetry 
+        ## Input ##
+        la: NPC Radius
+        symmetry: Number of corners
+        angleoffset (rad): Rotates the NPC by the given offset. Default 0
+        ## Return values ##
+        Cartesian coordinates in 1D and 2D array format 
+        '''
+        forces = np.zeros(symmetry) 
+        angle = 0.
+        cartc = np.zeros(2*symmetry) 
+        
+        for i in range(0, 2*symmetry, 2): # skip every other entry to populate it with y-coords
+            x, y = self.Pol2cart(la + forces[int(i/2)], angle+corneroffset+ringoffset)
+            cartc[i] = x
+            cartc[i+1] = y
+            angle += 2*np.pi/symmetry
+        return cartc
+    
+    
+    def Springlengths(self, cartc, symmetry): 
+        '''Compute lengths of springs from coordinates and returns circulant matrix
+        '''
+        cart2D = cartc.reshape(symmetry,2)
+        l = np.zeros(symmetry)
+        for i in range(len(l)):
+            l[i] = np.linalg.norm(cart2D[0, :] - cart2D[i, :])      
+        return circulant(l)
+    
+    
+    def Springconstants(self, symmetry): # TODO: More variable spring constants? 
+        "Returns circulant matrix of spring constants "
+        k = np.ones(int(np.floor(symmetry/2)))
+        if(symmetry%2 == 0): #if symmetry is even
+            k[-1] = k[-1]/2 # springs that connect opposite corners will be double-counted. Spring constant thus halved 
+            K = circulant(np.append(0, np.append(k, np.flip(k[:-1]))))
+        else: #if symmetry is odd 
+            K = circulant(np.append(0, [k, np.flip(k)]))
+        return K
+    
+    
+    def ForcesMultivariateNorm(self, *allringcords, symmetry = 8, magnitude = 50): # TODO: include distances to nucleoplasmic ring 
+        '''
+        Returns array of Forces that are later applied in radial direction to the NPC corners
+        ## Input ## 
+        *coordring: Initial coordinates of nodes for an arbitrary number of rings. 
+        magnitude: Total magnitude of distortion. Default is 50. 
+        ## Returns ## 
+        For each ring, an array of forces applied to each node
+        '''
+        #allcoords = np.asarray([cartc, cartc2, cartcR2, cartc2R2])#TODO
+        allcoords = np.asarray(allringcords) 
+        nrings = len(allringcords) # number of rings
+        #nrings = 4 # TODO
+        allcoords = allcoords.reshape(symmetry*nrings, 2)
+      
+        AllD = np.zeros((symmetry*nrings, symmetry*nrings)) # all distances
+        
+        for i in range(symmetry*nrings):
+            for j in range(symmetry*nrings):
+                AllD[i, j] = np.linalg.norm(allcoords[i, :] - allcoords[j, :])
+    
+        mean = list(np.zeros(symmetry*nrings)) # Mean of the normal distribution
+    
+        LInv = AllD.max() - AllD # invert distances  
+        
+        global cov
+        cov = [] # covariance matrix 
+        for i in range(symmetry*nrings):
+            cov.append(list(LInv[i]/AllD.max()))
+                
+        rng = np.random.default_rng(seed = 2) # TODO remove seed
+        
+        global F
+        F = rng.multivariate_normal(mean, cov)#, size = 1000) # TODO
+        
+    
+        initialmag = sum(abs(F))
+        
+        if (initialmag != 0):
+            F = nrings*magnitude/initialmag * F
+        
+        return np.split(F, nrings)#np.array_split(F, nrings)
+      
+    
+    def returnparameters(self, la, corneroffset, ringoffset, symmetry):
+        cartc = self.Initialcoords(la = la, symmetry=symmetry, corneroffset=corneroffset, ringoffset=ringoffset)
+        Lrest = self.Springlengths(cartc, symmetry)
+        K = self.Springconstants(symmetry)
+        y0 = np.concatenate((cartc, np.zeros(2*symmetry))) # starting coordinates and velocities of nodes. last half of the entries are starting velocities 
+        
+        return cartc, Lrest, K, y0
+    
+    
+    #cartc, Lrest, K, y0 = returnparameters(la, corneroffset = corneroffset0)
+    # cartc2, Lrest2, _, y02 = returnparameters(la = la2, corneroffset = corneroffset1)
+    # cartcR2, LrestR2, _, y0R2 = returnparameters(la = la2, corneroffset=corneroffset2, ringoffset=ringoffset) # TODO: Number a rough estimate adapted from SMAP code. Research needed. 
+    # cartc2R2, Lrest2R2, _, y02R2 = returnparameters(la = la, corneroffset = corneroffset3, ringoffset=ringoffset) # TODO: Number a rough estimate adapted from SMAP code. Research needed. 
+    
+    #randf = ForcesMultivariateNorm(cartc)
+    #randf, randf2, randf3, randf4 = ForcesMultivariateNorm(cartc, cartc2, cartcR2, cartc2R2, symmetry = symmetry, magnitude = magnitude)   
+
+# force coordinates    
+    # fcoords = Initialcoords(la, forces = randf, corneroffset = corneroffset0)
+    # fcoords2 = Initialcoords(la2, forces = randf2, corneroffset = corneroffset1)
+    # fcoords3 = Initialcoords(la2, forces = randf3, corneroffset=corneroffset2, ringoffset=ringoffset)
+    # fcoords4 = Initialcoords(la, forces = randf4, corneroffset = corneroffset3, ringoffset=ringoffset)
+    
+    #tlast = 40
+    #tspan = [0,tlast]
+    #teval = np.arange(0,tlast,0.2)
+    #teval = None
+    
+    # Solve ODE, ring 1 - 4 
+    #sol = solve_ivp(NPC, tspan, y0, t_eval=teval, method='RK45', args=(Lrest, la, K, ka, randf, d, n, symmetry))
+    # sol2 = solve_ivp(NPC, tspan, y02, t_eval=teval, method='RK45', args=(Lrest2, la2, K, ka, randf2, d, n, symmetry))
+    # solR2 = solve_ivp(NPC, tspan, y0R2, t_eval=teval, method='RK45', args=(LrestR2, la2, K, ka, randf3, d, n, symmetry))
+    # sol2R2 = solve_ivp(NPC, tspan, y02R2, t_eval=teval, method='RK45', args=(Lrest2R2, la, K, ka, randf4, d, n, symmetry))
     
 
-    initialmag = sum(abs(F))
-    
-    if (initialmag != 0):
-        F = nrings*magnitude/initialmag * F
-    
-    return np.split(F, nrings)#np.array_split(F, nrings)
-  
-
-def returnparameters(la, corneroffset = 0, ringoffset = 0, symmetry = symmetry):
-    cartc = Initialcoords(la = la, corneroffset=corneroffset, ringoffset=ringoffset)
-    Lrest = Springlengths(cartc, symmetry)
-    K = Springconstants(symmetry)
-    y0 = np.concatenate((cartc, np.zeros(2*symmetry))) # starting coordinates and velocities of nodes. last half of the entries are starting velocities 
-    
-    return cartc, Lrest, K, y0
 
 
-cartc, Lrest, K, y0 = returnparameters(la, corneroffset = corneroffset0)
-cartc2, Lrest2, _, y02 = returnparameters(la = la2, corneroffset = corneroffset1)
-cartcR2, LrestR2, _, y0R2 = returnparameters(la = la2, corneroffset=corneroffset2, ringoffset=ringoffset) # TODO: Number a rough estimate adapted from SMAP code. Research needed. 
-cartc2R2, Lrest2R2, _, y02R2 = returnparameters(la = la, corneroffset = corneroffset3, ringoffset=ringoffset) # TODO: Number a rough estimate adapted from SMAP code. Research needed. 
 
-#randf = ForcesMultivariateNorm(cartc)
-randf, randf2, randf3, randf4 = ForcesMultivariateNorm(cartc, cartc2, cartcR2, cartc2R2, symmetry = symmetry, magnitude = magnitude)   
 
-fcoords = Initialcoords(la, forces = randf, corneroffset = corneroffset0)
-fcoords2 = Initialcoords(la2, forces = randf2, corneroffset = corneroffset1)
-fcoords3 = Initialcoords(la2, forces = randf3, corneroffset=corneroffset2, ringoffset=ringoffset)
-fcoords4 = Initialcoords(la, forces = randf4, corneroffset = corneroffset3, ringoffset=ringoffset)
 
-start = timeit.default_timer()
-tlast = 40
-tspan = [0,tlast]
-#teval = np.arange(0,tlast,0.2)
-teval = None
-# Solve ODE, ring 1 - 4 
-sol = solve_ivp(NPC, tspan, y0, t_eval=teval, method='RK45', args=(Lrest, la, K, ka, randf, d, n, symmetry))
-sol2 = solve_ivp(NPC, tspan, y02, t_eval=teval, method='RK45', args=(Lrest2, la2, K, ka, randf2, d, n, symmetry))
-solR2 = solve_ivp(NPC, tspan, y0R2, t_eval=teval, method='RK45', args=(LrestR2, la2, K, ka, randf3, d, n, symmetry))
-sol2R2 = solve_ivp(NPC, tspan, y02R2, t_eval=teval, method='RK45', args=(Lrest2R2, la, K, ka, randf4, d, n, symmetry))
 
-stop = timeit.default_timer()
-print('Time: ', stop - start) 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 #### Plotting ####################################################################
 plt.rcParams.update({'font.size': 50})
