@@ -151,7 +151,7 @@ def ForcesMultivariateNorm(*allringcords, symmetry = 8, magnitude = 50): # TODO:
     #allcoords = np.asarray([cartc, cartc2, cartcR2, cartc2R2])#TODO
     allcoords = np.asarray(allringcords) 
     nrings = len(allringcords) # number of rings
-    #nrings = 4 # TODO
+
     allcoords = allcoords.reshape(symmetry*nrings, 2)
   
     AllD = np.zeros((symmetry*nrings, symmetry*nrings)) # all distances
