@@ -31,8 +31,6 @@ la = 50
 corneroffset0 = 0
 ringoffset = 0
 
-solution = DeformNPC(symmetry, d, n, magnitude, ka, la, corneroffset0, ringoffset).sol
-
 class DeformNPC:
 #    symmetry = 8 # finegraining with multiples of 8 possible 
 #    d = 1#0.1 # damping 
@@ -63,19 +61,21 @@ class DeformNPC:
 
     def __init__(self, symmetry, d, n, magnitude, ka, la, corneroffset0, ringoffset):
         self.symmetry = symmetry
-        self.d = d
-        self.n = n
-        self.magnitude = magnitude
-        self.ka = ka
-        self.la = la
-        self.corneroffset0 = corneroffset0
-        self.ringoffset = ringoffset
+        self.d = d # damping
+        self.n = n # number of connected neighbours
+        self.magnitude = magnitude # magnitude of deformation
+        self.ka = ka # spring constant of anchor spring
+        self.la = la # length of anchor spring
+        self.corneroffset0 = corneroffset0 # angle between corners
+        self.ringoffset = ringoffset # angle between rings 
 
     
-        if(n > symmetry/2):
-            self.n = int(np.floor(symmetry/2))
-            warn("Selected number of neighbours n too large. n has been set to " + str(n) + ".")
-        cartc, Lrest, K, y0 = self.returnparameters(la, corneroffset = 0, ringoffset = 0, symmetry = self.symmetry)
+        if(self.n > self.symmetry/2):
+            self.n = int(np.floor(self.symmetry/2))
+            warn("Selected number of neighbours n too large. n has been set to " + str(self.n) + ".")
+        cartc, Lrest, K, y0 = self.returnparameters(self.la, self.corneroffset0, self.ringoffset, self.symmetry)
+        print("cartc", cartc)
+        global randf
         randf = self.ForcesMultivariateNorm(cartc)
         
         tlast = 40
@@ -84,11 +84,11 @@ class DeformNPC:
         teval = None
     
         # Solve ODE, ring 1 - 4 
-        self.sol = solve_ivp(self.NPC, tspan, y0, t_eval=teval, method='RK45', args=(Lrest, la, K, ka, randf, d, n, symmetry))
-            
+        sol = solve_ivp(self.NPC, tspan, y0, t_eval=teval, method='RK45', args=(Lrest, self.la, K, ka, randf, d, n, self.symmetry))
+        return sol    
     ### Functions 
     
-    def NPC(self,t, y, Lrest, la, K, ka, randf, d, n, symmetry = 8):
+    def NPC(self, t, y, Lrest, la, K, ka, randf, d, n, symmetry):
         '''
         t: time points 
         y: values of the solution at t 
@@ -102,13 +102,15 @@ class DeformNPC:
         output: solutions at t. x and y components of positions and velocities of each node for each time-step 
         '''
         v = np.reshape(y[2*symmetry:], (symmetry, 2))
+        global x
         x = np.reshape(y[:2*symmetry], (symmetry, 2))
     
         anc = np.array([0., 0.]) # coordinates of anchor node   
+        global F
         F = np.zeros((symmetry, 2)) # Forces
         
         for i in range(symmetry): # TODO test
-            F[i] = randf[i]*x[i] / np.linalg.norm([x[i], anc])
+            F[i] = randf[i]*x[i] / np.linalg.norm([x[i], anc]) #TODO randf wrong dimension?
     
         allaccarray = np.zeros((symmetry, 2)) # array for accelerations of node 0 - 7
         
@@ -134,7 +136,7 @@ class DeformNPC:
         y = rho * np.sin(phi)
         return(x, y)
     
-    def Initialcoords(self, la, symmetry = 8, corneroffset = 0, ringoffset = 0): #TODO real-data coordinates
+    def Initialcoords(self, la, corneroffset = 0, ringoffset = 0): #TODO real-data coordinates
         '''
         Generates cartesian coordinates of the NPC given radius and symmetry 
         ## Input ##
@@ -144,32 +146,32 @@ class DeformNPC:
         ## Return values ##
         Cartesian coordinates in 1D and 2D array format 
         '''
-        forces = np.zeros(symmetry) 
+        forces = np.zeros(self.symmetry) 
         angle = 0.
-        cartc = np.zeros(2*symmetry) 
+        cartc = np.zeros(2*self.symmetry) 
         
-        for i in range(0, 2*symmetry, 2): # skip every other entry to populate it with y-coords
+        for i in range(0, 2*self.symmetry, 2): # skip every other entry to populate it with y-coords
             x, y = self.Pol2cart(la + forces[int(i/2)], angle+corneroffset+ringoffset)
             cartc[i] = x
             cartc[i+1] = y
-            angle += 2*np.pi/symmetry
+            angle += 2*np.pi/self.symmetry
         return cartc
     
     
-    def Springlengths(self, cartc, symmetry): 
+    def Springlengths(self, cartc): 
         '''Compute lengths of springs from coordinates and returns circulant matrix
         '''
-        cart2D = cartc.reshape(symmetry,2)
-        l = np.zeros(symmetry)
+        cart2D = cartc.reshape(self.symmetry,2)
+        l = np.zeros(self.symmetry)
         for i in range(len(l)):
             l[i] = np.linalg.norm(cart2D[0, :] - cart2D[i, :])      
         return circulant(l)
     
     
-    def Springconstants(self, symmetry): # TODO: More variable spring constants? 
+    def Springconstants(self): # TODO: More variable spring constants? 
         "Returns circulant matrix of spring constants "
-        k = np.ones(int(np.floor(symmetry/2)))
-        if(symmetry%2 == 0): #if symmetry is even
+        k = np.ones(int(np.floor(self.symmetry/2)))
+        if(self.symmetry%2 == 0): #if symmetry is even
             k[-1] = k[-1]/2 # springs that connect opposite corners will be double-counted. Spring constant thus halved 
             K = circulant(np.append(0, np.append(k, np.flip(k[:-1]))))
         else: #if symmetry is odd 
@@ -177,7 +179,7 @@ class DeformNPC:
         return K
     
     
-    def ForcesMultivariateNorm(self, *allringcords, symmetry = 8, magnitude = 50): # TODO: include distances to nucleoplasmic ring 
+    def ForcesMultivariateNorm(self, *allringcords): # TODO: include distances to nucleoplasmic ring 
         '''
         Returns array of Forces that are later applied in radial direction to the NPC corners
         ## Input ## 
@@ -188,45 +190,45 @@ class DeformNPC:
         '''
         #allcoords = np.asarray([cartc, cartc2, cartcR2, cartc2R2])#TODO
         allcoords = np.asarray(allringcords) 
+        global nrings
         nrings = len(allringcords) # number of rings
         #nrings = 4 # TODO
-        allcoords = allcoords.reshape(symmetry*nrings, 2)
+        allcoords = allcoords.reshape(self.symmetry*nrings, 2)
       
-        AllD = np.zeros((symmetry*nrings, symmetry*nrings)) # all distances
+        AllD = np.zeros((symmetry*nrings, self.symmetry*nrings)) # all distances
         
-        for i in range(symmetry*nrings):
-            for j in range(symmetry*nrings):
+        for i in range(self.symmetry*nrings):
+            for j in range(self.symmetry*nrings):
                 AllD[i, j] = np.linalg.norm(allcoords[i, :] - allcoords[j, :])
     
-        mean = list(np.zeros(symmetry*nrings)) # Mean of the normal distribution
+        mean = list(np.zeros(self.symmetry*nrings)) # Mean of the normal distribution
     
         LInv = AllD.max() - AllD # invert distances  
         
         global cov
         cov = [] # covariance matrix 
-        for i in range(symmetry*nrings):
+        for i in range(self.symmetry*nrings):
             cov.append(list(LInv[i]/AllD.max()))
                 
         rng = np.random.default_rng(seed = 2) # TODO remove seed
         
-        global F
+        #global F
         F = rng.multivariate_normal(mean, cov)#, size = 1000) # TODO
         
     
         initialmag = sum(abs(F))
         
         if (initialmag != 0):
-            F = nrings*magnitude/initialmag * F
+            F = nrings*self.magnitude/initialmag * F
         
         return np.split(F, nrings)#np.array_split(F, nrings)
       
     
     def returnparameters(self, la, corneroffset, ringoffset, symmetry):
-        cartc = self.Initialcoords(la = la, symmetry=symmetry, corneroffset=corneroffset, ringoffset=ringoffset)
-        Lrest = self.Springlengths(cartc, symmetry)
-        K = self.Springconstants(symmetry)
+        cartc = self.Initialcoords(la = la, corneroffset=corneroffset, ringoffset=ringoffset)
+        Lrest = self.Springlengths(cartc)
+        K = self.Springconstants()
         y0 = np.concatenate((cartc, np.zeros(2*symmetry))) # starting coordinates and velocities of nodes. last half of the entries are starting velocities 
-        
         return cartc, Lrest, K, y0
     
     
@@ -255,6 +257,8 @@ class DeformNPC:
     # solR2 = solve_ivp(NPC, tspan, y0R2, t_eval=teval, method='RK45', args=(LrestR2, la2, K, ka, randf3, d, n, symmetry))
     # sol2R2 = solve_ivp(NPC, tspan, y02R2, t_eval=teval, method='RK45', args=(Lrest2R2, la, K, ka, randf4, d, n, symmetry))
     
+
+solution = DeformNPC(symmetry, d, n, magnitude, ka, la, corneroffset0, ringoffset)
 
 
 
