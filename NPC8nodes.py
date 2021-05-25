@@ -371,14 +371,15 @@ forces2d = fcoords[0].reshape(symmet, 2)
 forces2d2 = fcoords[1].reshape(symmet, 2)
 forces2d3 = fcoords[2].reshape(symmet, 2)
 forces2d4 = fcoords[3].reshape(symmet, 2)
-
+zdists = [0, 0, 50, 50]
 linewidth = 3
 normalize = True
-for i in range(0, symmet):
-    ax.quiver(position2D(0)[0,i,0], position2D(0)[0,i,1], 0, forces2d[i,0], forces2d[i,1], 0, length = randf[0][i], normalize = normalize, linewidth = linewidth , edgecolor = "blue")#(forces2d[i,0] - solplot2D0[0,i,0]),(forces2d[i,1] - solplot2D0[0,i,1]), 0)   
-    ax.quiver(position2D(1)[0,i,0], position2D(1)[0,i,1], 0, forces2d2[i,0], forces2d2[i,1], 0, length = randf[1][i], normalize = normalize, linewidth = linewidth, edgecolor = "blue")#(forces2d[i,0] - solplot2D0[0,i,0]),(forces2d[i,1] - solplot2D0[0,i,1]), 0)   
-    ax.quiver(position2D(2)[0,i,0], position2D(2)[0,i,1], zdist, forces2d3[i,0], forces2d3[i,1], 0, length = randf[2][i], normalize = normalize, linewidth = linewidth, edgecolor = "blue")#(forces2d[i,0] - solplot2D0[0,i,0]),(forces2d[i,1] - solplot2D0[0,i,1]), 0)   
-    ax.quiver(position2D(3)[0,i,0], position2D(3)[0,i,1], zdist, forces2d4[i,0], forces2d4[i,1], 0, length = randf[3][i], normalize = normalize, linewidth = linewidth, edgecolor = "blue")#(forces2d[i,0] - solplot2D0[0,i,0]),(forces2d[i,1] - solplot2D0[0,i,1]), 0)   
+for ring in range(nRings):
+    for i in range(0, symmet):
+        ax.quiver(position2D(ring)[0,i,0], position2D(ring)[0,i,1], zdists[ring], fcoords[ring][i*2], fcoords[ring][i*2 + 1], 0, length = randf[0][i], normalize = normalize, linewidth = linewidth , edgecolor = "blue")#(forces2d[i,0] - solplot2D0[0,i,0]),(forces2d[i,1] - solplot2D0[0,i,1]), 0)   
+        # ax.quiver(position2D(1)[0,i,0], position2D(1)[0,i,1], 0, forces2d2[i,0], forces2d2[i,1], 0, length = randf[1][i], normalize = normalize, linewidth = linewidth, edgecolor = "blue")#(forces2d[i,0] - solplot2D0[0,i,0]),(forces2d[i,1] - solplot2D0[0,i,1]), 0)   
+        # ax.quiver(position2D(2)[0,i,0], position2D(2)[0,i,1], zdist, forces2d3[i,0], forces2d3[i,1], 0, length = randf[2][i], normalize = normalize, linewidth = linewidth, edgecolor = "blue")#(forces2d[i,0] - solplot2D0[0,i,0]),(forces2d[i,1] - solplot2D0[0,i,1]), 0)   
+        # ax.quiver(position2D(3)[0,i,0], position2D(3)[0,i,1], zdist, forces2d4[i,0], forces2d4[i,1], 0, length = randf[3][i], normalize = normalize, linewidth = linewidth, edgecolor = "blue")#(forces2d[i,0] - solplot2D0[0,i,0]),(forces2d[i,1] - solplot2D0[0,i,1]), 0)   
 
 
 
