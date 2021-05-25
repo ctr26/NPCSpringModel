@@ -30,6 +30,10 @@ nRings = 4      # Number of rings
 class DeformNPC:
     def __init__(self, symmet, nConnect, mag, nRings = 1, r = 0, ringAngles = 0):
         self.symmet = symmet
+
+        self.cartcoords = []        
+        self.sol = []
+        self.fcoords = []    
         
         damp = 1 # damping
         kr = 0.7 # spring constant of anchor spring 
@@ -43,10 +47,6 @@ class DeformNPC:
         Lrests = []
         Ks = []
         y0s = [] 
-
-        self.cartcoords = []        
-        self.sol = []
-        self.fcoords = []    
 
         if(nConnect > self.symmet/2):
             nConnect = int(np.floor(self.symmet/2))
@@ -78,13 +78,7 @@ class DeformNPC:
             self.fcoords.append(self.Initialcoords(r[i], ringAngles[i], randf[i]))
             
             
-        # force coordinates    
-    # fcoords = Initialcoords(r, forces = randf, corneroffset = corneroffset0)
-    # fcoords2 = Initialcoords(r2, forces = randf2, corneroffset = corneroffset1)
-    # fcoords3 = Initialcoords(r2, forces = randf3, corneroffset=corneroffset2, ringoffset=ringoffset)
-    # fcoords4 = Initialcoords(r, forces = randf4, corneroffset = corneroffset3, ringoffset=ringoffset)
-    
-    ### Functions 
+    ### Methods 
     
     def NPC(self, t, y, Lrest, r, K, kr, randf, damp, nConnect):
         '''
@@ -142,7 +136,11 @@ class DeformNPC:
         ## Return values ##
         Cartesian coordinates in 1D and 2D array format 
         '''
-        forces = np.zeros(self.symmet) # TODO: Doesn't that overwrite whatever entry?
+        if(type(forces) != int):
+            if (len(forces) != self.symmet):
+                warn("forces must be 0 or an array with len(self.symmet")
+                
+        forces = forces * np.ones(self.symmet) # forces is 0 or np.array with len(self.symmet)
         rotAngle = 0.
         cartcoord = np.zeros(2*self.symmet) 
         
@@ -217,14 +215,6 @@ class DeformNPC:
             return np.split(F, nRings)[0]
         else:
             return np.split(F, nRings)#np.array_split(F, nrings)
-      
-
-# force coordinates    
-    # fcoords = Initialcoords(r, forces = randf, corneroffset = corneroffset0)
-    # fcoords2 = Initialcoords(r2, forces = randf2, corneroffset = corneroffset1)
-    # fcoords3 = Initialcoords(r2, forces = randf3, corneroffset=corneroffset2, ringoffset=ringoffset)
-    # fcoords4 = Initialcoords(r, forces = randf4, corneroffset = corneroffset3, ringoffset=ringoffset)
-    
 
 
 deformNPC = DeformNPC(symmet, nConnect, mag, nRings = nRings, r = [50, 54, 54, 50], ringAngles = [0, 0.2069, 0.0707, 0.2776])
