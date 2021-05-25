@@ -22,60 +22,60 @@ from matplotlib import rc
 from matplotlib.patches import FancyArrowPatch
 
 ### Parameters
-symmet = 8
-mag = 50
-nConnect = 3
-
+symmet = 8      # Rotational symmetry of the NPC
+mag = 100        # Magnitude of deformation 
+nConnect = 3    # Number of connected neighbour nodes in clock-wise and anti-clockwise direction
+nRings = 4      # Number of rings 
 
 class DeformNPC:
-    def __init__(self, symmet, nConnect, mag, r = 0, ringAngles = 0):
+    def __init__(self, symmet, nConnect, mag, nRings = 1, r = 0, ringAngles = 0):
         self.symmet = symmet
-        self.mag = mag # magnitude of deformation
-        self.r = r # length of anchor spring
-        self.nConnect = nConnect # number of connected neighbours cw and ccw
-        self.ringAngles = ringAngles
-
-   
-        if(self.nConnect > self.symmet/2):
-            self.nConnect = int(np.floor(self.symmet/2))
-            warn("Selected number of neighbours nConnect too large. nConnect has been set to " + str(self.nConnect) + ".")
-        
-        if(len(r) != len(ringAngles)):
-            warn("r and ringAngles must be equal length")
         
         damp = 1 # damping
         kr = 0.7 # spring constant of anchor spring 
+        
         tlast = 40
         tspan = [0,tlast]      
         #teval = np.arange(0,tlast,0.2)
         teval = None        
         
-        # radii = [50, 54, 54, 50]
-        # ringAngles = [0, 0.2069, 0.0707, 0.2776]
-        cartcoords = []
+
         Lrests = []
         Ks = []
         y0s = [] 
+
+        self.cartcoords = []        
+        self.sol = []
+        self.fcoords = []    
+
+        if(nConnect > self.symmet/2):
+            nConnect = int(np.floor(self.symmet/2))
+            warn("Selected number of neighbours nConnect too large. nConnect has been set to " + str(nConnect) + ".")
         
-        for i in range(len(self.r)):
-            cartcoord, Lrest, K, y0 = self.returnparameters(self.r[i], self.ringAngles[i], self.symmet)
-            cartcoords.append(cartcoord)
-            Lrests.append(Lrest)
-            Ks.append(K)
-            y0s.append(y0)
+        if(len(r) != nRings or len(ringAngles) != nRings):
+            warn("r and ringAngles must be the same length as nRings")
+
+
+        
+        for i in range(nRings):
+            
+            cartcoord = self.Initialcoords(r[i], ringAngle = ringAngles[i])
+            self.cartcoords.append(cartcoord)
+                       
+            Lrests.append(self.Springlengths(cartcoord)) 
+            Ks.append(self.Springconstants())
+            y0s.append(np.concatenate((cartcoord, np.zeros(2 * self.symmet)))) #
+            
+            
   
-        randf = self.ForcesMultivariateNorm(cartcoords) # TODO
+        randf = self.ForcesMultivariateNorm(self.cartcoords, mag, nRings = nRings) # TODO
             
         # Solve ODE, ring 1 - 4 
-        self.sol = []
-        self.fcoords = []
+
         
-        for i in range(len(self.r)):
-            temp = solve_ivp(self.NPC, tspan, y0s[i], t_eval=teval, method='RK45', args=(Lrests[i], self.r[i], Ks[i], kr, randf[i], damp, nConnect, self.symmet))
-            self.sol.append(temp)
-            #self.sol.append(solve_ivp(self.NPC, tspan, y0s[i], t_eval=teval, method='RK45', args=(Lrests[i], self.r[i], Ks[i], kr, randf[i], d, n, self.symmet)))
-            
-            self.fcoords.append(self.Initialcoords(self.r[i], randf[i], self.ringAngles[i]))
+        for i in range(nRings):
+            self.sol.append(solve_ivp(self.NPC, tspan, y0s[i], t_eval=teval, method='RK45', args=(Lrests[i], r[i], Ks[i], kr, randf[i], damp, nConnect)))    
+            self.fcoords.append(self.Initialcoords(r[i], ringAngles[i], randf[i]))
             
             
         # force coordinates    
@@ -86,7 +86,7 @@ class DeformNPC:
     
     ### Functions 
     
-    def NPC(self, t, y, Lrest, r, K, kr, randf, damp, nConnect, symmet):
+    def NPC(self, t, y, Lrest, r, K, kr, randf, damp, nConnect):
         '''
         t: time points 
         y: values of the solution at t 
@@ -99,22 +99,22 @@ class DeformNPC:
         symmet (default: 8): Number of nodes 
         output: solutions at t. x and y components of positions and velocities of each node for each time-step 
         '''
-        v = np.reshape(y[2*symmet:], (symmet, 2))
-        x = np.reshape(y[:2*symmet], (symmet, 2))
+        v = np.reshape(y[2*self.symmet:], (self.symmet, 2))
+        x = np.reshape(y[:2*self.symmet], (self.symmet, 2))
     
         anc = np.array([0., 0.]) # coordinates of anchor node   
-        F = np.zeros((symmet, 2)) # Forces
+        F = np.zeros((self.symmet, 2)) # Forces
         
-        for i in range(symmet): # TODO test
+        for i in range(self.symmet): # TODO test
             F[i] = randf[i]*x[i] / np.linalg.norm([x[i], anc]) #TODO randf wrong dimension?
     
-        allaccarray = np.zeros((symmet, 2)) # array for accelerations of node 0 - 7
+        allaccarray = np.zeros((self.symmet, 2)) # array for accelerations of node 0 - 7
         
-        for i in range(symmet): # i indicates the reference node        
+        for i in range(self.symmet): # i indicates the reference node        
             accarray = np.array([0., 0.]) # initiate acceleration array for each node i 
             
             for j in [k for k in range(-nConnect, nConnect+1) if k != 0]: # j is neighbour nodes -nConnect to +nConnect relative to i, skipping 0 (0=i)            
-                jnew = (i+j)%symmet 
+                jnew = (i+j)%self.symmet 
                 accarray += K[i][jnew]  * (x[i]-x[jnew])/np.linalg.norm(x[i]-x[jnew]) * (Lrest[i][jnew] - np.linalg.norm(x[i]-x[jnew]))
     
             accarray += kr * (x[i] - anc)/np.linalg.norm(x[i] - anc) * (r - np.linalg.norm(x[i] - anc)) #anchor
@@ -132,12 +132,12 @@ class DeformNPC:
         y = rho * np.sin(phi)
         return(x, y)
     
-    def Initialcoords(self, r, forces = 0, ringAngle = 0): #TODO real-data coordinates
+    def Initialcoords(self, r, ringAngle = 0, forces = 0): #TODO real-data coordinates
         '''
-        Generates cartesian coordinates of the NPC given radius and symmet 
+        Generates cartesian coordinates of the NPC given radius and self.symmet 
         ## Input ##
         r: NPC Radius
-        symmet: Number of corners
+
         angleoffset (rad): Rotates the NPC by the given offset. Default 0
         ## Return values ##
         Cartesian coordinates in 1D and 2D array format 
@@ -175,7 +175,7 @@ class DeformNPC:
         return K
     
     
-    def ForcesMultivariateNorm(self, allringcords): # TODO: include distances to nucleoplasmic ring 
+    def ForcesMultivariateNorm(self, allringcords, mag, nRings = 1): # TODO: include distances to nucleoplasmic ring 
         '''
         Returns array of Forces that are later applied in radial direction to the NPC corners
         ## Input ## 
@@ -186,22 +186,20 @@ class DeformNPC:
         '''
         #allcoords = np.asarray([cartcoord, cartcoord2, cartcoordR2, cartcoord2R2])#TODO
         allcoords = np.asarray(allringcords) 
-        nrings = len(allringcords) # number of rings
-        #nrings = 4 # TODO
-        allcoords = allcoords.reshape(self.symmet*nrings, 2)
+        allcoords = allcoords.reshape(self.symmet*nRings, 2)
       
-        AllD = np.zeros((symmet*nrings, self.symmet*nrings)) # all distances
+        AllD = np.zeros((self.symmet*nRings, self.symmet*nRings)) # all distances
         
-        for i in range(self.symmet*nrings):
-            for j in range(self.symmet*nrings):
+        for i in range(self.symmet*nRings):
+            for j in range(self.symmet*nRings):
                 AllD[i, j] = np.linalg.norm(allcoords[i, :] - allcoords[j, :])
     
-        mean = list(np.zeros(self.symmet*nrings)) # Mean of the normal distribution
+        mean = list(np.zeros(self.symmet*nRings)) # Mean of the normal distribution
     
         LInv = AllD.max() - AllD # invert distances  
 
         cov = [] # covariance matrix 
-        for i in range(self.symmet*nrings):
+        for i in range(self.symmet*nRings):
             cov.append(list(LInv[i]/AllD.max()))
                 
         rng = np.random.default_rng() # TODO remove seed
@@ -213,29 +211,13 @@ class DeformNPC:
         initmag = sum(abs(F))
         
         if (initmag != 0):
-            F = nrings*self.mag/initmag * F
+            F = nRings*mag/initmag * F
         
-        if (nrings) == 1: # TODO: more general return statement 
-            return np.split(F, nrings)[0]
+        if (nRings) == 1: # TODO: more general return statement 
+            return np.split(F, nRings)[0]
         else:
-            return np.split(F, nrings)#np.array_split(F, nrings)
+            return np.split(F, nRings)#np.array_split(F, nrings)
       
-    
-    def returnparameters(self, r, ringAngle, symmet):
-        cartcoord = self.Initialcoords(r, ringAngle = ringAngle)
-        Lrest = self.Springlengths(cartcoord)
-        K = self.Springconstants()
-        y0 = np.concatenate((cartcoord, np.zeros(2*symmet))) # starting coordinates and velocities of nodes. last half of the entries are starting velocities 
-        return cartcoord, Lrest, K, y0
-    
-    
-    #cartcoord, Lrest, K, y0 = returnparameters(r, corneroffset = corneroffset0)
-    # cartcoord2, Lrest2, _, y02 = returnparameters(r = r2, corneroffset = corneroffset1)
-    # cartcoordR2, LrestR2, _, y0R2 = returnparameters(r = r2, corneroffset=corneroffset2, ringoffset=ringoffset) # TODO: Number a rough estimate adapted from SMAP code. Research needed. 
-    # cartcoord2R2, Lrest2R2, _, y02R2 = returnparameters(r = r, corneroffset = corneroffset3, ringoffset=ringoffset) # TODO: Number a rough estimate adapted from SMAP code. Research needed. 
-    
-    #randf = ForcesMultivariateNorm(cartcoord)
-    #randf, randf2, randf3, randf4 = ForcesMultivariateNorm(cartcoord, cartcoord2, cartcoordR2, cartcoord2R2, symmet = symmet, mag = mag)   
 
 # force coordinates    
     # fcoords = Initialcoords(r, forces = randf, corneroffset = corneroffset0)
@@ -243,22 +225,13 @@ class DeformNPC:
     # fcoords3 = Initialcoords(r2, forces = randf3, corneroffset=corneroffset2, ringoffset=ringoffset)
     # fcoords4 = Initialcoords(r, forces = randf4, corneroffset = corneroffset3, ringoffset=ringoffset)
     
-    #tlast = 40
-    #tspan = [0,tlast]
-    #teval = np.arange(0,tlast,0.2)
-    #teval = None
-    
-    # Solve ODE, ring 1 - 4 
-    #sol = solve_ivp(NPC, tspan, y0, t_eval=teval, method='RK45', args=(Lrest, r, K, kr, randf, d, n, symmet))
-    # sol2 = solve_ivp(NPC, tspan, y02, t_eval=teval, method='RK45', args=(Lrest2, r2, K, kr, randf2, d, n, symmet))
-    # solR2 = solve_ivp(NPC, tspan, y0R2, t_eval=teval, method='RK45', args=(LrestR2, r2, K, kr, randf3, d, n, symmet))
-    # sol2R2 = solve_ivp(NPC, tspan, y02R2, t_eval=teval, method='RK45', args=(Lrest2R2, r, K, kr, randf4, d, n, symmet))
-    
 
-deformNPC = DeformNPC(symmet, nConnect, mag, r = [50, 54, 54, 50], ringAngles = [0, 0.2069, 0.0707, 0.2776])
+
+deformNPC = DeformNPC(symmet, nConnect, mag, nRings = nRings, r = [50, 54, 54, 50], ringAngles = [0, 0.2069, 0.0707, 0.2776])
 
 solution = deformNPC.sol
 fcoords = deformNPC.fcoords
+cartcoords = deformNPC.cartcoords
 
 
 
@@ -366,7 +339,7 @@ def Plotforces(forces, coords):
     plt.axis("scaled")
 
 
-# Plotforces(np.concatenate([fcoords, fcoords2, fcoords3, fcoords4]), np.concatenate([cartcoord, cartcoord2, cartcoordR2, cartcoord2R2]))
+Plotforces(np.concatenate([fcoords[0], fcoords[1], fcoords[2], fcoords[3]]), np.concatenate([cartcoords[0], cartcoords[1], cartcoords[2], cartcoords[3]]))
 
 
 showforces = False
