@@ -30,8 +30,7 @@ nRings = 4      # Number of rings
 class DeformNPC:
     def __init__(self, symmet, nConnect, mag, nRings = 1, r = 0, ringAngles = 0):
         self.symmet = symmet
-
-        self.cartcoords = []        
+        self.initcoords = []        
         self.solution = []
         self.fcoords = []    
         
@@ -58,15 +57,15 @@ class DeformNPC:
 
         
         for i in range(nRings):            
-            cartcoord = self.Initialcoords(r[i], ringAngle = ringAngles[i])
-            self.cartcoords.append(cartcoord)
+            initcoord = self.Initialcoords(r[i], ringAngle = ringAngles[i])
+            self.initcoords.append(initcoord) # TODO remove .flatten()
                        
-            Lrests.append(self.Springlengths(cartcoord)) 
+            Lrests.append(self.Springlengths(initcoord)) 
             Ks.append(self.Springconstants())
-            y0s.append(np.concatenate((cartcoord, np.zeros(2 * self.symmet)))) #
+            y0s.append(np.concatenate((initcoord.flatten(), np.zeros(2 * self.symmet)))) #
             
     
-        self.randf = self.ForcesMultivariateNorm(self.cartcoords, mag, nRings = nRings) # TODO
+        self.randf = self.ForcesMultivariateNorm(self.initcoords, mag, nRings = nRings) # TODO
             
         # Solve ODE, ring 1 - 4 
 
@@ -140,23 +139,24 @@ class DeformNPC:
                 
         forces = forces * np.ones(self.symmet) # forces is 0 or np.array with len(self.symmet)
         rotAngle = 0.
-        cartcoord = np.zeros(2*self.symmet) 
+
+        initcoord = np.zeros((self.symmet, 2))
         
-        for i in range(0, 2*self.symmet, 2): # skip every other entry to populate it with y-coords
-            x, y = self.Pol2cart(r + forces[int(i/2)], rotAngle+ringAngle)
-            cartcoord[i] = x
-            cartcoord[i+1] = y
+        for i in range(self.symmet):
+            initcoord[i, 0], initcoord[i, 1] = self.Pol2cart(r + forces[i], 
+                                                             rotAngle+ringAngle)
             rotAngle += 2*np.pi/self.symmet
-        return cartcoord
+
+        return initcoord
     
     
-    def Springlengths(self, cartcoord): 
+    def Springlengths(self, initcoord): 
         '''Compute lengths of springs from coordinates and returns circulant matrix
         '''
-        cart2D = cartcoord.reshape(self.symmet,2)
+        #cart2D = initcoord.reshape(self.symmet,2)
         l = np.zeros(self.symmet)
-        for i in range(len(l)):
-            l[i] = np.linalg.norm(cart2D[0, :] - cart2D[i, :])      
+        for i in range(self.symmet):
+            l[i] = np.linalg.norm(initcoord[0, :] - initcoord[i, :])      
         return circulant(l)
     
     
@@ -172,7 +172,7 @@ class DeformNPC:
     
     
     
-    def ForcesMultivariateNorm(self, allringcords, mag, nRings = 1): # TODO: include distances to nucleoplasmic ring 
+    def ForcesMultivariateNorm(self, initcoords, mag, nRings = 1): # TODO: include distances to nucleoplasmic ring 
         '''
         Returns array of Forces that are later applied in radial direction to the NPC corners
         ## Input ## 
@@ -181,8 +181,8 @@ class DeformNPC:
         ## Returns ## 
         For each ring, an array of forces applied to each node
         '''
-        #allcoords = np.asarray([cartcoord, cartcoord2, cartcoordR2, cartcoord2R2])#TODO
-        allcoords = np.asarray(allringcords) 
+        global allcoords
+        allcoords = np.asarray(initcoords) 
         allcoords = allcoords.reshape(self.symmet*nRings, 2)
       
         AllD = np.zeros((self.symmet*nRings, self.symmet*nRings)) # all distances
@@ -220,7 +220,7 @@ deformNPC = DeformNPC(symmet, nConnect, mag, nRings = nRings, r = [50, 54, 54, 5
 
 solution = deformNPC.solution
 fcoords = deformNPC.fcoords
-cartcoords = deformNPC.cartcoords
+initcoords = deformNPC.initcoords
 randf = deformNPC.randf
 
 
@@ -317,23 +317,25 @@ def Plotting(solution, symmet = symmet, nConnect = nConnect,  linestyle = "-", l
     axs[1].set(xlabel = "x (nm)", ylabel = "y (nm)")  
     plt.tight_layout()
 
-def Plotforces(fcoords, coords):  
+def Plotforces(fcoords, initcoords):  
+    fcoords = np.concatenate(fcoords)
+    initcoords = np.concatenate(initcoords)
+    allnodes = len(initcoords)
+    
     fig, ax1 = plt.subplots(1,1, figsize = (10, 10))
-    nodes = int(len(fcoords)/2)
-    forces2d = fcoords.reshape(nodes, 2)
-    start = coords.reshape(nodes, 2)
-    for i in range(int(nodes/2)):
-        ax1.arrow(x = start[i,0], y = start[i,1], 
-        dx = (forces2d[i,0] - start[i,0]), dy = (forces2d[i,1] - start[i,1]),
+    
+    for i in range(allnodes):#int(nodes/2)):
+        ax1.arrow(x = initcoords[i,0], y = initcoords[i,1], 
+        dx = (fcoords[i,0] - initcoords[i,0]), dy = (fcoords[i,1] - initcoords[i,1]),
         width = 0.7, color="blue") 
     plt.axis("scaled")
 
 
-Plotforces(np.concatenate([fcoords[0], fcoords[1], fcoords[2], fcoords[3]]), np.concatenate([cartcoords[0], cartcoords[1], cartcoords[2], cartcoords[3]]))
+Plotforces(fcoords, initcoords)
 
 
 showforces = False
-trajectories = False
+trajectories = False 
 fig, axs = plt.subplots(2, 1, figsize = (15, 26))
 
 #Plotting(solution, colourbar = False, mainmarkercolor="darkgray", legend = False)#, forces = fcoords3, showforce = showforces, trajectory=trajectories)#, markersize = 30)
@@ -371,8 +373,8 @@ linewidth = 3
 normalize = True
 
 for ring in range(nRings):
-    for i in range(0, symmet):
-        ax.quiver(position2D(ring)[0,i,0], position2D(ring)[0,i,1], zdists[ring], fcoords[ring][i*2], fcoords[ring][i*2 + 1], 0, length = randf[0][i], normalize = normalize, linewidth = linewidth , edgecolor = "blue")#(forces2d[i,0] - solplot2D0[0,i,0]),(forces2d[i,1] - solplot2D0[0,i,1]), 0)   
+    for i in range(symmet):
+        ax.quiver(position2D(ring)[0,i,0], position2D(ring)[0,i,1], zdists[ring], fcoords[ring][i][0], fcoords[ring][i][1], 0, length = randf[0][i], normalize = normalize, linewidth = linewidth , edgecolor = "blue")#(forces2d[i,0] - solplot2D0[0,i,0]),(forces2d[i,1] - solplot2D0[0,i,1]), 0)   
 
 ax.set_xlabel('x (nm)', labelpad = 30)
 ax.set_ylabel('y (nm)', labelpad = 30)
@@ -409,7 +411,7 @@ with open('/home/maria/Documents/NPCPython/NPCexampleposter.csv', 'w', newline='
 
 
 #plt.scatter(F[:,0], F[:,1]) 
-#cartcoord = np.array([1.,0,np.sqrt(2)/2, np.sqrt(2)/2,0,1,-np.sqrt(2)/2,np.sqrt(2)/2,-1,0,-np.sqrt(2)/2,-np.sqrt(2)/2,0,-1,np.sqrt(2)/2,-np.sqrt(2)/2]) #TODO remove
+#initcoord = np.array([1.,0,np.sqrt(2)/2, np.sqrt(2)/2,0,1,-np.sqrt(2)/2,np.sqrt(2)/2,-1,0,-np.sqrt(2)/2,-np.sqrt(2)/2,0,-1,np.sqrt(2)/2,-np.sqrt(2)/2]) #TODO remove
 ###### TODO
 global xy
 global xy1
