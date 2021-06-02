@@ -39,8 +39,8 @@ class DeformNPC:
         
         tlast = 40
         tspan = [0,tlast]      
-        #teval = np.arange(0,tlast,0.2)
-        teval = None        
+        teval = np.arange(0,tlast,0.4)
+        #teval = None        
         
 
         Lrests = []
@@ -55,7 +55,7 @@ class DeformNPC:
             warn("r and ringAngles must be the same length as nRings")
 
 
-        
+        global initcoord
         for i in range(nRings):            
             initcoord = self.Initialcoords(r[i], ringAngle = ringAngles[i])
             self.initcoords.append(initcoord) # TODO remove .flatten()
@@ -63,28 +63,27 @@ class DeformNPC:
             Lrests.append(self.Springlengths(initcoord)) 
             Ks.append(self.Springconstants())
             y0s.append(np.concatenate((initcoord.flatten(), np.zeros(2 * self.symmet)))) #
-            
-    
-        self.randf = self.ForcesMultivariateNorm(self.initcoords, mag, nRings = nRings) # TODO
+
+        self.randfs = self.ForcesMultivariateNorm(self.initcoords, mag, nRings = nRings) # TODO
             
         # Solve ODE, ring 1 - 4 
 
         
         for i in range(nRings):
-            self.solution.append(solve_ivp(self.NPC, tspan, y0s[i], t_eval=teval, method='RK45', args=(Lrests[i], r[i], Ks[i], kr, self.randf[i], damp, nConnect)))    
-            self.fcoords.append(self.Initialcoords(r[i], ringAngles[i], self.randf[i]))
+            self.solution.append(solve_ivp(self.NPC, tspan, y0s[i], t_eval=teval, method='RK45', args=(Lrests[i], r[i], Ks[i], kr, self.randfs[i], damp, nConnect)))    
+            self.fcoords.append(self.Initialcoords(r[i], ringAngles[i], self.randfs[i]))
             
             
     ### Methods 
     
-    def NPC(self, t, y, Lrest, r, K, kr, randf, damp, nConnect):
+    def NPC(self, t, y, Lrest, r, K, kr, randfs, damp, nConnect):
         '''
         t: time points 
         y: values of the solution at t 
         Lrest: Circulant matrix of resting lengths of all springs 
         K: Circulant matrix of all radial spring constants 
         kr: Spring constants of anchor springs 
-        randf: array of forces (length = symmet) to be applied in radial direction to each node 
+        randfs: array of forces (length = symmet) to be applied in radial direction to each node 
         d: Damping factor 
         nConnect: Number of connected neighbours in cw and ccw direction for each node 
         symmet (default: 8): Number of nodes 
@@ -92,12 +91,12 @@ class DeformNPC:
         '''
         v = np.reshape(y[2*self.symmet:], (self.symmet, 2))
         x = np.reshape(y[:2*self.symmet], (self.symmet, 2))
-    
+        
         anc = np.array([0., 0.]) # coordinates of anchor node   
         F = np.zeros((self.symmet, 2)) # Forces
         
         for i in range(self.symmet): # TODO test
-            F[i] = randf[i]*x[i] / np.linalg.norm([x[i], anc]) #TODO randf wrong dimension?
+            F[i] = randfs[i]*x[i] / np.linalg.norm([x[i], anc]) 
     
         allaccarray = np.zeros((self.symmet, 2)) # array for accelerations of node 0 - 7
         
@@ -181,7 +180,6 @@ class DeformNPC:
         ## Returns ## 
         For each ring, an array of forces applied to each node
         '''
-        global allcoords
         allcoords = np.asarray(initcoords) 
         allcoords = allcoords.reshape(self.symmet*nRings, 2)
       
@@ -219,15 +217,25 @@ class DeformNPC:
 deformNPC = DeformNPC(symmet, nConnect, mag, nRings = nRings, r = [50, 54, 54, 50], ringAngles = [0, 0.2069, 0.0707, 0.2776])
 
 solution = deformNPC.solution
-fcoords = deformNPC.fcoords
-initcoords = deformNPC.initcoords
-randf = deformNPC.randf
+fcoords = deformNPC.fcoords # coordinates of force vectors
+initcoords = deformNPC.initcoords # starting coordinates 
+randfs = deformNPC.randfs # magnitude of force vectors 
+
+def Sol2D(solution):
+    """"""
+    nFrames = len(solution.t)
+    symmet = int(len(solution.y)/4) #/4 because of 2 dim times both velocity and position 
+    pos1D = solution.y.T[: , :2*symmet] # positions over time
+    vel1D = solution.y.T[: , 2*symmet:] # velocities over time
+    pos2D = np.reshape(pos1D, (nFrames, symmet, 2))
+    vel2D = np.reshape(vel1D, (nFrames, symmet, 2))
+    return pos2D, vel2D
 
 
 
-
-
-
+def Pos2D(solution):
+    pos2D, vel2D = Sol2D(solution)
+    return pos2D   
 
 #### Plotting ####################################################################
 plt.rcParams.update({'font.size': 50})
@@ -245,7 +253,6 @@ def Plotting(solution, symmet = symmet, nConnect = nConnect,  linestyle = "-", l
     '''
     viewFrame = -1 # 0 is the first frame, -1 is the last frame
     nFrames = len(solution.t)
-
     pos = solution.y.T[: , :2*symmet] # positions over time
     vel = solution.y.T[: , 2*symmet:] # velocities over time
     pos2D = np.reshape(pos, (nFrames, symmet, 2))
@@ -253,9 +260,9 @@ def Plotting(solution, symmet = symmet, nConnect = nConnect,  linestyle = "-", l
     
     # Position over time
     palette = sns.color_palette("hsv", 2*symmet)
-    for node in range(symmet):
-        axs[0].plot(solution.t, pos2D[:, node, 0], label = "x" + str(node), linestyle = linestyle, color = palette[node*2])
-        axs[0].plot(solution.t, pos2D[:, node, 1], label = "y" + str(node), linestyle = linestyle, color = palette[node*2 + 1])
+    for i in range(symmet):
+        axs[0].plot(solution.t, pos2D[:, i, 0], label = "x" + str(i), linestyle = linestyle, color = palette[i*2])
+        axs[0].plot(solution.t, pos2D[:, i, 1], label = "y" + str(i), linestyle = linestyle, color = palette[i*2 + 1])
     if(legend):
         axs[0].legend(loc = 'best')
     axs[0].set(xlabel = 't (a.u.)')
@@ -266,14 +273,14 @@ def Plotting(solution, symmet = symmet, nConnect = nConnect,  linestyle = "-", l
     
     # Anchor springs
     axs[1].plot([0,0], [0,0], marker = "o", color = "lightgray", markersize = 15)
-    for node in range(symmet):
-        axs[1].plot((pos2D[viewFrame, node, 0], 0), (pos2D[viewFrame, node, 1], 0),
+    for i in range(symmet):
+        axs[1].plot((pos2D[viewFrame, i, 0], 0), (pos2D[viewFrame, i, 1], 0),
         linestyle = ":", marker = "", color="lightgray")   
         
     # Radial springs 
     for ni in range(1, nConnect+1): # neighbours to connect to
-        for node in range(symmet): # node to connect from 
-            axs[1].plot(pos2D[viewFrame, (node, (node+ni)%symmet), 0], pos2D[viewFrame, (node, (node+ni)%symmet), 1], 
+        for i in range(symmet): # node to connect from 
+            axs[1].plot(pos2D[viewFrame, (i, (i+ni)%symmet), 0], pos2D[viewFrame, (i, (i+ni)%symmet), 1], 
             linestyle = ":", marker = "", color="gray")#, linewidth = 5)
 
     # Trajectories 
@@ -282,18 +289,18 @@ def Plotting(solution, symmet = symmet, nConnect = nConnect,  linestyle = "-", l
             ### colourcoding velocities
             normvel = np.zeros((nFrames, symmet)) #nFrames, node
             
-            for node in range(symmet):
+            for i in range(symmet):
                 for frame in range(nFrames):
-                    normvel[frame, node] = np.linalg.norm([vel2D[frame, node, 0], vel2D[frame, node, 1]])
+                    normvel[frame, i] = np.linalg.norm([vel2D[frame, i, 0], vel2D[frame, i, 1]])
                     
             norm = plt.Normalize(normvel.min(), normvel.max()) 
             
             #####trajectory colorcoded for velocity        
-            for node in range(symmet):
-                points = pos2D[:, node, :].reshape(-1, 1, 2)
+            for i in range(symmet):
+                points = pos2D[:, i, :].reshape(-1, 1, 2)
                 segments = np.concatenate([points[:-1],points[1:]], axis = 1)
                 lc = LineCollection(segments, cmap = 'plasma', norm=norm, zorder = 100)
-                lc.set_array(normvel[:, node])
+                lc.set_array(normvel[:, i])
                 line = axs[1].add_collection(lc)
         
             if(colourbar):
@@ -301,16 +308,16 @@ def Plotting(solution, symmet = symmet, nConnect = nConnect,  linestyle = "-", l
                 axcb.set_label('velocity (a.u.)')
             
         else: # monochrome trajectory
-            for node in range(symmet):
-                axs[1].plot(pos2D[:, node, 0], pos2D[:, node, 1], color = "blue", linestyle = "-")
+            for i in range(symmet):
+                axs[1].plot(pos2D[:, i, 0], pos2D[:, i, 1], color = "blue", linestyle = "-")
 
     ### Force vectors
     if(showforce and type(forces) != int):
         forces2d = forces.reshape(symmet, 2)
-        for node in range(symmet):
-            axs[1].arrow(x = pos2D[0, node, 0], y = pos2D[0, node, 1], 
-                         dx = (forces2d[node, 0] - pos2D[0, node, 0]), 
-                         dy = (forces2d[node, 1] - pos2D[0, node, 1]),
+        for i in range(symmet):
+            axs[1].arrow(x = pos2D[0, i, 0], y = pos2D[0, i, 1], 
+                         dx = (forces2d[i, 0] - pos2D[0, i, 0]), 
+                         dy = (forces2d[i, 1] - pos2D[0, i, 1]),
                          width = 0.7, color="blue")   
             
     axs[1].axis("scaled")
@@ -348,9 +355,6 @@ Plotting(solution[3], linestyle="--")#, forces = fcoords2, showforce = showforce
 
 
 
-def position2D(i):
-    return np.reshape(solution[i].y.T[:, :2*symmet],(len(solution[i].y.T), symmet, 2))
-
 
 ## 3D plot
 viewFrame = 0 # 0 is the first frame, -1 is the last frame
@@ -358,10 +362,10 @@ fig = plt.figure(figsize = (15,15))
 ax = fig.add_subplot(111, projection='3d')
 zdist = 50
 
-ax.scatter(position2D(0)[viewFrame, : ,0], position2D(0)[viewFrame, :,1], s = 200, c = "black")
-ax.scatter(position2D(1)[viewFrame, : ,0], position2D(1)[viewFrame, :,1], s = 200, c = "black")
-ax.scatter(position2D(2)[viewFrame, : ,0], position2D(2)[viewFrame, :,1], zdist, s = 200, c = "gray")
-ax.scatter(position2D(3)[viewFrame, : ,0], position2D(3)[viewFrame, :,1], zdist, s = 200, c = "gray")
+ax.scatter(Pos2D(solution[0])[viewFrame, : ,0], Pos2D(solution[0])[viewFrame, :,1], s = 200, c = "black")
+ax.scatter(Pos2D(solution[1])[viewFrame, : ,0], Pos2D(solution[1])[viewFrame, :,1], s = 200, c = "black")
+ax.scatter(Pos2D(solution[2])[viewFrame, : ,0], Pos2D(solution[2])[viewFrame, :,1], zdist, s = 200, c = "gray")
+ax.scatter(Pos2D(solution[3])[viewFrame, : ,0], Pos2D(solution[3])[viewFrame, :,1], zdist, s = 200, c = "gray")
 
 #3D arrows
 # forces2d = fcoords[0].reshape(symmet, 2)
@@ -374,7 +378,7 @@ normalize = True
 
 for ring in range(nRings):
     for i in range(symmet):
-        ax.quiver(position2D(ring)[0,i,0], position2D(ring)[0,i,1], zdists[ring], fcoords[ring][i][0], fcoords[ring][i][1], 0, length = randf[0][i], normalize = normalize, linewidth = linewidth , edgecolor = "blue")#(forces2d[i,0] - solplot2D0[0,i,0]),(forces2d[i,1] - solplot2D0[0,i,1]), 0)   
+        ax.quiver(Pos2D(solution[ring])[0,i,0], Pos2D(solution[ring])[0,i,1], zdists[ring], fcoords[ring][i][0], fcoords[ring][i][1], 0, length = randfs[0][i], normalize = normalize, linewidth = linewidth , edgecolor = "blue")#(forces2d[i,0] - solplot2D0[0,i,0]),(forces2d[i,1] - solplot2D0[0,i,1]), 0)   
 
 ax.set_xlabel('x (nm)', labelpad = 30)
 ax.set_ylabel('y (nm)', labelpad = 30)
@@ -395,17 +399,17 @@ plt.show()
 
 
 
-with open('/home/maria/Documents/NPCPython/NPCexampleposter.csv', 'w', newline='') as csvfile:
+with open('/home/maria/Documents/NPCPython/NPCexampleposter2.csv', 'w', newline='') as csvfile:
     spamwriter = csv.writer(csvfile, delimiter=',',
                             quotechar='|', quoting=csv.QUOTE_MINIMAL)
     for i in range(symmet):
-        spamwriter.writerow(np.append(solplot2D0[-1, i, :], 0))
+        spamwriter.writerow(np.append(Pos2D(solution[0])[-1,i], 0))
     for i in range(symmet):
-        spamwriter.writerow(np.append(solplot2D1[-1, i, :], 0))
+        spamwriter.writerow(np.append(Pos2D(solution[1])[-1,i], 0))
     for i in range(symmet):
-        spamwriter.writerow(np.append(solplot2D2[-1, i, :], zdist))
+        spamwriter.writerow(np.append(Pos2D(solution[2])[-1,i], zdist))
     for i in range(symmet):
-        spamwriter.writerow(np.append(solplot2D3[-1, i, :], zdist))
+        spamwriter.writerow(np.append(Pos2D(solution[3])[-1,i], zdist))
 
 
 
@@ -418,20 +422,25 @@ global xy1
 global xy2
 global xy3
 global xyA
-xy = solplot2D0[:, np.append(np.arange(symmet), 0), :] # TODO 
-xy1 = solplot2D1[:, np.append(np.arange(symmet), 0), :] # TODO 
-xy2 = solplot2D2[:, np.append(np.arange(symmet), 0), :] # TODO 
-xy3 = solplot2D3[:, np.append(np.arange(symmet), 0), :] # TODO 
+# xy = solplot2D0[:, np.append(np.arange(symmet), 0), :] # TODO 
+# xy1 = solplot2D1[:, np.append(np.arange(symmet), 0), :] # TODO 
+# xy2 = solplot2D2[:, np.append(np.arange(symmet), 0), :] # TODO 
+# xy3 = solplot2D3[:, np.append(np.arange(symmet), 0), :] # TODO 
+
+xy = Pos2D(solution[0])[:, np.append(np.arange(symmet), 0)] # TODO 
+xy1 = Pos2D(solution[1])[:, np.append(np.arange(symmet), 0)] # TODO 
+xy2 = Pos2D(solution[2])[:, np.append(np.arange(symmet), 0)] # TODO 
+xy3 = Pos2D(solution[3])[:, np.append(np.arange(symmet), 0)] # TODO 
 
 # xy = solplot2D0[:, :symmet, :] # TODO 
 # xy1 = solplot2D1[:, :symmet, :] # TODO 
 # xy2 = solplot2D2[:, :symmet, :] # TODO 
 # xy3 = solplot2D3[:, :symmet, :] # TODO 
 
-# xyA = np.zeros((len(xy),2*symmet,2))
-# for i in range(len(xy)):
-#     xyA[i,:,0] = np.insert(xy[i,:symmet,0], np.arange(symmet), 0)
-#     xyA[i,:,1] = np.insert(xy[i,:symmet,1], np.arange(symmet), 0)
+xyA = np.zeros((len(xy), 2*symmet, 2))
+for i in range(len(xy)):
+    xyA[i,:,0] = np.insert(xy[i,:symmet,0], np.arange(symmet), 0)
+    xyA[i,:,1] = np.insert(xy[i,:symmet,1], np.arange(symmet), 0)
 
 #%matplotlib qt # Run in console if python doesn't show plot 
 class AnimatedScatter(object):
@@ -443,7 +452,7 @@ class AnimatedScatter(object):
         self.fig, self.ax = plt.subplots(figsize = (9, 10))
         plt.rcParams.update({'font.size': 20})
         # Then setup FuncAnimation.
-        self.ani = animation.FuncAnimation(self.fig, self.update, interval=15, nFrames = len(xy),
+        self.ani = animation.FuncAnimation(self.fig, self.update, interval=15, frames = len(xy), #TODO change frames back to nFrames?
                                           init_func=self.setup_plot, blit=True)
         #HTML(self.ani.to_html5_video())
         self.ani.save("Damping0.mp4", dpi = 250)
@@ -476,7 +485,7 @@ class AnimatedScatter(object):
 
     def data_stream(self, pos):
         while True:
-            for i in range(0, len(xy)):
+            for i in range(len(xy)):
                 x_y = xy[i]
                 x_y1 = xy1[i]
                 x_y2 = xy2[i]
@@ -520,62 +529,6 @@ class AnimatedScatter(object):
 
 
 if __name__ == '__main__':
-    #a = AnimatedScatter(xy)
+    a = AnimatedScatter(xy)
 
     plt.show()
-
-
-
-
-# x = np.random.random(3)
-# y = np.random.random(3)
-# x1 = np.random.random(3)
-# y1 = np.random.random(3)
-# fig, ax = plt.subplots()
-
-# ax.axis([-1, 1, -1, 1])
-
-# lines = []
-# for index in range(2):
-#     lobj = ax.plot([], [], marker = "o", color = "black", linestyle = ":")
-#     lines.append(lobj)
-
-# # for line in lines:
-# #     line[0].set_data([],[])
-    
-# xlist = [x, x1]
-# ylist = [y, y1]
-# for lnum, line in enumerate(lines):
-#     line[0].set_data(xlist[lnum],ylist[lnum]) 
-# plt.show()
-
-# for i in range(10):
-#    if(i >5):
-#        break
-#    print(i)
-   
-# plt.rcParams.update({'font.size': 2})
-# fig, axs = plt.subplots(32, 32, figsize = (16,16))
-# for i in range(32):
-#    for j in range(32):
-#        axs[i,j].scatter(F[:,i], F[:,j], s = 4)
-
-
-    #rings = 1 # Number of rings TODO: Doesn't do anything currently
-#    kr = 0.5 # Spring constant anchor springs
-    
-    ### NPC Measures. Here rough measures for Nup107, adapted from SMAP. TODO: Research measures. 
-#    r = 50 # TODO: Number a rough estimate adapted from SMAP code. Research needed. 
-#    r2 = 54 # TODO: Number a rough estimate adapted from SMAP code. Research needed. 
-    
-#    zdist = -50 # distance between cytoplasmic and nucleoplasmic ring TODO: realistic number. move outside of class?
-    
-    # Ring 1
-#    corneroffset0 = 0
-#    corneroffset1 = 0.2069 + np.random.normal(0,0) # TODO: Number a rough estimate adapted from SMAP code. Research needed. 
-    
-    # Ring 2 
-#    ringoffset = 0.17#0.1309 + np.random.normal(0,0) # Offset between nucleoplamic and cytoplasmic ring. TODO: Number a rough estimate adapted from SMAP code. Research needed. 
-#    corneroffset2 = 0.0707 + np.random.normal(0,0) # TODO: Number a rough estimate adapted from SMAP code. Research needed. 
-#    corneroffset3 = 0.2776 + np.random.normal(0,0) # TODO: Number a rough estimate adapted from SMAP code. Research needed. 
-    ### 
