@@ -490,40 +490,30 @@ class AnimatedScatter(object):
         return [self.lines[i][0] for i in range(int(8 + 8*2*4))]#self.lines[0][0], self.lines[1][0], self.lines[2][0], self.lines[3][0], self.lines[4][0], self.lines[5][0],self.lines[6][0], self.lines[7][0],#self.line, self.line1, self.line2, self.line3, self.lineA, self.lineA1, self.lineA2, self.lineA3,
 
     def data_stream(self, pos):
-        x_y = np.zeros((symmet + 1, 2*self.nRings))
-        while True:
-
+        x = np.zeros((symmet+1, self.nRings))
+        y = np.zeros((symmet+1, self.nRings))
+        while True: 
             for i in range(len(xy[0])):
-                for ring in range(0, int(2*self.nRings), 2):
-                    #for node in range(symmet + 1):
-                    x_y[:, (ring, ring+1)] = xy[int(ring/2)][i]
-                yield x_y
-                    #x_y[:, 1] = xy[ring][i][:,1]
-                # x_y = xy[i]
-                # x_y1 = xy1[i]
-                # x_y2 = xy2[i]
-                # x_y3 = xy3[i]
-                #yield np.c_[x_y[:,0], x_y[:,1], x_y1[:,0], x_y1[:,1], x_y2[:,0], x_y2[:,1], x_y3[:,0], x_y3[:,1]]
-
+                for ring in range(self.nRings):
+                    x[:, ring] = xy[ring][i][:, 0]
+                    y[:, ring] = xy[ring][i][:, 1]
+                yield x, y
+        
     def update(self, i):
         """Update the plot."""
-        x, y, x1, y1, x2, y2, x3, y3 = next(self.stream).T
+
+        x, y = next(self.stream)
         
-
-        xa = np.insert(x[:symmet], np.arange(symmet), 0)
-        ya = np.insert(y[:symmet], np.arange(symmet), 0)
-        x1a = np.insert(x1[:symmet], np.arange(symmet), 0)
-        y1a = np.insert(y1[:symmet], np.arange(symmet), 0)       
-        x2a = np.insert(x2[:symmet], np.arange(symmet), 0)
-        y2a = np.insert(y2[:symmet], np.arange(symmet), 0)        
-        x3a = np.insert(x3[:symmet], np.arange(symmet), 0)
-        y3a = np.insert(y3[:symmet], np.arange(symmet), 0)
+        xa = np.zeros((2*symmet, self.nRings))
+        ya = np.zeros((2*symmet, self.nRings))     
         
-
-
-        xlist = [x, x1, x2, x3, xa, x1a, x2a, x3a]
-        ylist = [y, y1, y2, y3, ya, y1a, y2a, y3a]
-
+        for ring in range(nRings):
+            for i in range(1, 2*symmet, 2): 
+                xa[i, ring] = x[int((i-1)/2), ring]
+                ya[i, ring] = y[int((i-1)/2), ring]
+        
+        xlist = list(x.T) + list(xa.T)
+        ylist = list(y.T) + list(ya.T)
                 
         for lnum, self.line in enumerate(self.lines):
             if lnum >= len(xlist):
