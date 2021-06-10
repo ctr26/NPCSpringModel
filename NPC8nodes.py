@@ -23,8 +23,8 @@ from matplotlib.patches import FancyArrowPatch
 
 ### Parameters
 symmet = 8      # Rotational symmetry of the NPC
-mag = 0        # Magnitude of deformation 
-nConnect = 3    # Number of connected neighbour nodes in clock-wise and anti-clockwise direction
+mag = 70        # Magnitude of deformation 
+nConnect = 2    # Number of connected neighbour nodes in clock-wise and anti-clockwise direction
 nRings = 4      # Number of rings 
 
 class DeformNPC:
@@ -199,25 +199,36 @@ class DeformNPC:
         ## Returns ## 
         For each ring, an array of forces applied to each node
         '''
-        allcoords = np.asarray(initcoords) 
-        allcoords = allcoords.reshape(self.symmet*nRings, 2)
-      
-        AllD = np.zeros((self.symmet*nRings, self.symmet*nRings)) # all distances
+        global allcoords
+        global AllD
+        global LInv
+        global cov
+        nodesTotal = self.symmet*nRings # total number of nodes over all rings 
         
-        for i in range(self.symmet*nRings):
-            for j in range(self.symmet*nRings):
+        allcoords = np.asarray(initcoords) # separated by NPC rings
+        allcoords = allcoords.reshape(nodesTotal, 2) # not separated by NPC rings 
+        
+        sigma = 50
+        AllD = np.zeros((nodesTotal, nodesTotal)) # all distances
+
+        cov2 = np.zeros((nodesTotal, nodesTotal))
+        for i in range(nodesTotal):
+            for j in range(nodesTotal):
                 AllD[i, j] = np.linalg.norm(allcoords[i, :] - allcoords[j, :])
+                cov2[i, j] = np.exp(-(AllD[i, j]**2 / (2*sigma**2)))
     
-        mean = list(np.zeros(self.symmet*nRings)) # Mean of the normal distribution
+
     
         LInv = AllD.max() - AllD # invert distances  
 
         cov = [] # covariance matrix 
-        for i in range(self.symmet*nRings):
+        for i in range(nodesTotal):
             cov.append(list(LInv[i]/AllD.max()))
+
+        mean = list(np.zeros(nodesTotal)) # Mean of the normal distribution
                 
         rng = np.random.default_rng() # TODO remove seed
-        F = rng.multivariate_normal(mean, cov)#, size = 1000) # TODO
+        F = rng.multivariate_normal(mean, cov2)#, size = 1000) # TODO cov2
         
     
         initmag = sum(abs(F))
@@ -232,7 +243,7 @@ class DeformNPC:
 
 
 r = [50, 54, 54, 50]
-ringAngles = [0, 0.2069, 0.0707, 0.2776]
+ringAngles = [0, 0.2069, 0.2407, 0.4476]
 z = [0, 0, 50, 50]
 
 deformNPC = DeformNPC(symmet, nConnect, mag, nRings = nRings, r = r, ringAngles = ringAngles, z = z)
@@ -267,7 +278,7 @@ def ColourcodeZ(z, darkest = 0.1, brightest = 0.5):
 #### Plotting ####################################################################
 plt.rcParams.update({'font.size': 30})
 
-def Plot2D(solution, z = z, symmet = symmet, nConnect = nConnect,  linestyle = "-", trajectory = True, colourcode = True, markersize = 25, forces = 0, showforce = False): # TODO 
+def Plot2D(solution, z = z, symmet = symmet, nConnect = nConnect,  linestyle = "-", trajectory = True, colourcode = True, markersize = 20, forces = 0, showforce = False): # TODO 
     '''
     solution: Output of solve_ivp
     symmet: number of nodes
