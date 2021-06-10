@@ -23,7 +23,7 @@ from matplotlib.patches import FancyArrowPatch
 
 ### Parameters
 symmet = 8      # Rotational symmetry of the NPC
-mag = 100        # Magnitude of deformation 
+mag = 0        # Magnitude of deformation 
 nConnect = 3    # Number of connected neighbour nodes in clock-wise and anti-clockwise direction
 nRings = 4      # Number of rings 
 
@@ -40,10 +40,10 @@ class DeformNPC:
         
         tlast = 40
         tspan = [0,tlast]      
-        teval = np.arange(0,tlast,0.1)
-        #teval = None        
+        #teval = np.arange(0, tlast, 0.1)
+        teval = None        
         
-
+        global Lrests
         Lrests = []
         Ks = []
         y0s = [] 
@@ -55,9 +55,8 @@ class DeformNPC:
         if(len(r) != nRings or len(ringAngles) != nRings):
             warn("r and ringAngles must be the same length as nRings")
 
-
-        global initcoord
-        for i in range(nRings):            
+        for i in range(nRings):  
+            r[i] = self.AdjustRadius(r[i])
             initcoord = self.Initialcoords(r[i], ringAngle = ringAngles[i])
             self.initcoords.append(initcoord) # TODO remove .flatten()
                        
@@ -77,18 +76,18 @@ class DeformNPC:
             
     ### Methods 
     
-    def NPC(self, t, y, Lrest, r, K, kr, randfs, damp, nConnect):
+    def NPC(self, t, y, Lrest, r, K, kr, randf, damp, nConnect):
         '''
         t: time points 
         y: values of the solution at t 
         Lrest: Circulant matrix of resting lengths of all springs 
         K: Circulant matrix of all radial spring constants 
         kr: Spring constants of anchor springs 
-        randfs: array of forces (length = symmet) to be applied in radial direction to each node 
-        d: Damping factor 
+        randf: array of forces (length = symmet) to be applied in radial direction to each node 
+        damp: Damping factor 
         nConnect: Number of connected neighbours in cw and ccw direction for each node 
-        symmet (default: 8): Number of nodes 
-        output: solutions at t. x and y components of positions and velocities of each node for each time-step 
+
+        output: solutions at t. x and y components of positions and velocities of each node for each timestep 
         '''
         v = np.reshape(y[2*self.symmet:], (self.symmet, 2))
         x = np.reshape(y[:2*self.symmet], (self.symmet, 2))
@@ -97,7 +96,7 @@ class DeformNPC:
         F = np.zeros((self.symmet, 2)) # Forces
         
         for i in range(self.symmet): # TODO test
-            F[i] = randfs[i]*x[i] / np.linalg.norm([x[i], anc]) 
+            F[i] = randf[i]*x[i] / np.linalg.norm([x[i], anc]) 
     
         allaccarray = np.zeros((self.symmet, 2)) # array for accelerations of node 0 - 7
         
@@ -116,6 +115,25 @@ class DeformNPC:
         return dxdt
     
     
+    def AdjustRadius(self, r8):
+        """Adjusts radius r with symmetry. No adjustment is made when symmetry is 8. Radius is viewed
+        as the lenght of the symmetric side of an isoceles triangle whose tip (angle alpha) points towards the 
+        center of the NPC and whose base is the section between two nodes of a ring at the circumference of the 
+        NPC. Think slice of cake.
+        # Input: 
+        r8: radius of a default 8-fold symmetrical NPC
+        
+        ## Output: 
+        rnew: radius of NPC with symmetry equal to symmet (rnew = r8 if symmet = 8)
+        
+        """
+        alpha = 2*np.pi/self.symmet # Angle at the tip of triangular slice (pointing to center of NPC)
+        theta = 0.5 * (np.pi - alpha) # Angle at the base of triangular slice
+        halfbase = r8 * np.sin(np.pi/8) # half the distance between two corners of an NPC ring 
+        height = halfbase * np.tan(theta) # height from base to tip of triangular slice
+        return np.sqrt(height**2 + halfbase**2) # new radius 
+        
+               
     def Pol2cart(self, rho, phi):
         '''Transforms polar coordinates of a point (rho: radius, phi: angle) to 2D cartesian coordinates.
         '''
@@ -129,10 +147,10 @@ class DeformNPC:
         ## Input ##
         r: NPC Radius
 
-        angleoffset (rad): Rotates the NPC by the given offset. Default 0
         ## Return values ##
         Cartesian coordinates in 1D and 2D array format 
         '''
+        
         if(type(forces) != int):
             if (len(forces) != self.symmet):
                 warn("forces must be 0 or an array with len(self.symmet")
@@ -199,8 +217,6 @@ class DeformNPC:
             cov.append(list(LInv[i]/AllD.max()))
                 
         rng = np.random.default_rng() # TODO remove seed
-        
-        #global F
         F = rng.multivariate_normal(mean, cov)#, size = 1000) # TODO
         
     
@@ -223,7 +239,7 @@ deformNPC = DeformNPC(symmet, nConnect, mag, nRings = nRings, r = r, ringAngles 
 solution = deformNPC.solution
 fcoords = deformNPC.fcoords # coordinates of force vectors
 initcoords = deformNPC.initcoords # starting coordinates 
-randfs = deformNPC.randfs # magnitude of force vectors 
+randfs = deformNPC.randfs # magnitude of forces
 z = deformNPC.z
 
 def Sol2D(solution):
@@ -417,42 +433,29 @@ def Export2CSV():
 Export2CSV
 
 
-#plt.scatter(F[:,0], F[:,1]) 
-#initcoord = np.array([1.,0,np.sqrt(2)/2, np.sqrt(2)/2,0,1,-np.sqrt(2)/2,np.sqrt(2)/2,-1,0,-np.sqrt(2)/2,-np.sqrt(2)/2,0,-1,np.sqrt(2)/2,-np.sqrt(2)/2]) #TODO remove
-###### TODO
-
-global xy1
-global xy2
-global xy3
-global xyA
-
-xy = Pos2D(solution[0])[:, np.append(np.arange(symmet), 0)] # TODO 
-xy1 = Pos2D(solution[1])[:, np.append(np.arange(symmet), 0)] # TODO 
-xy2 = Pos2D(solution[2])[:, np.append(np.arange(symmet), 0)] # TODO 
-xy3 = Pos2D(solution[3])[:, np.append(np.arange(symmet), 0)] # TODO 
-
-
-xyA = np.zeros((len(xy), 2*symmet, 2))
-for i in range(len(xy)):
-    xyA[i,:,0] = np.insert(xy[i,:symmet,0], np.arange(symmet), 0)
-    xyA[i,:,1] = np.insert(xy[i,:symmet,1], np.arange(symmet), 0)
-
 #%matplotlib qt # Run in console if python doesn't show plot 
 class AnimatedScatter(object):
     """An animated scatter plot using matplotlib.animations.FuncAnimation."""
     def __init__(self, solution, nRings, numpoints = symmet+1):
         self.solution = solution
+        
+        framenumbers = []
+        for i in range(nRings):
+            framenumbers.append(len(self.solution[i].t))
+        if (len(set(framenumbers)) != 1):
+            warn("Number of timesteps for all ring must be the same in order to animate deformation.")
+            return
+    
         self.nRings = nRings
         self.numpoints = numpoints
-        global xy
-        xy = self.xydata()
+        self.xy = self.xydata()
         
-        self.stream = self.data_stream(xy)
+        self.stream = self.data_stream(self.xy)
         # Setup the figure and axes...
         self.fig, self.ax = plt.subplots(figsize = (9, 10))
         plt.rcParams.update({'font.size': 20})
         # Then setup FuncAnimation.
-        self.ani = animation.FuncAnimation(self.fig, self.update, interval=15, frames = len(xy), #TODO change frames back to nFrames?
+        self.ani = animation.FuncAnimation(self.fig, self.update, interval=15, frames = len(self.xy), #TODO change frames back to nFrames?
                                           init_func=self.setup_plot, blit=True)
         #HTML(self.ani.to_html5_video())
         self.ani.save("Damping0.mp4", dpi = 250)
@@ -493,10 +496,10 @@ class AnimatedScatter(object):
         x = np.zeros((symmet+1, self.nRings))
         y = np.zeros((symmet+1, self.nRings))
         while True: 
-            for i in range(len(xy[0])):
+            for i in range(len(self.xy[0])):
                 for ring in range(self.nRings):
-                    x[:, ring] = xy[ring][i][:, 0]
-                    y[:, ring] = xy[ring][i][:, 1]
+                    x[:, ring] = self.xy[ring][i][:, 0]
+                    y[:, ring] = self.xy[ring][i][:, 1]
                 yield x, y
         
     def update(self, i):
@@ -532,7 +535,7 @@ class AnimatedScatter(object):
 
 
 if __name__ == '__main__':
-    a = AnimatedScatter(xy, nRings)
+    a = AnimatedScatter(solution, nRings)
 
     plt.show()
 #AnimatedScatter(xy)
