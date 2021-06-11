@@ -23,7 +23,7 @@ from matplotlib.patches import FancyArrowPatch
 
 ### Parameters
 symmet = 8      # Rotational symmetry of the NPC
-mag = 70        # Magnitude of deformation 
+mag = 40        # Magnitude of deformation 
 nConnect = 2    # Number of connected neighbour nodes in clock-wise and anti-clockwise direction
 nRings = 4      # Number of rings 
 
@@ -56,27 +56,27 @@ class DeformNPC:
             warn("r and ringAngles must be the same length as nRings")
 
         for i in range(nRings):  
-            r[i] = self.AdjustRadius(r[i])
-            initcoord = self.Initialcoords(r[i], ringAngle = ringAngles[i])
+            r[i] = self.adjustRadius(r[i])
+            initcoord = self.initialcoords(r[i], ringAngle = ringAngles[i])
             self.initcoords.append(initcoord) # TODO remove .flatten()
                        
-            Lrests.append(self.Springlengths(initcoord)) 
-            Ks.append(self.Springconstants())
+            Lrests.append(self.springlengths(initcoord)) 
+            Ks.append(self.springconstants())
             y0s.append(np.concatenate((initcoord.flatten(), np.zeros(2 * self.symmet)))) #
 
-        self.randfs = self.ForcesMultivariateNorm(self.initcoords, mag, nRings = nRings) # TODO
+        self.randfs = self.forcesMultivariateNorm(self.initcoords, r, mag, nRings = nRings) # TODO
             
         # Solve ODE, ring 1 - 4 
 
         
         for i in range(nRings):
-            self.solution.append(solve_ivp(self.NPC, tspan, y0s[i], t_eval=teval, method='RK45', args=(Lrests[i], r[i], Ks[i], kr, self.randfs[i], damp, nConnect)))    
-            self.fcoords.append(self.Initialcoords(r[i], ringAngles[i], self.randfs[i]))
+            self.solution.append(solve_ivp(self.npc, tspan, y0s[i], t_eval=teval, method='RK45', args=(Lrests[i], r[i], Ks[i], kr, self.randfs[i], damp, nConnect)))    
+            self.fcoords.append(self.initialcoords(r[i], ringAngles[i], self.randfs[i]))
             
             
     ### Methods 
     
-    def NPC(self, t, y, Lrest, r, K, kr, randf, damp, nConnect):
+    def npc(self, t, y, Lrest, r, K, kr, randf, damp, nConnect):
         '''
         t: time points 
         y: values of the solution at t 
@@ -115,7 +115,7 @@ class DeformNPC:
         return dxdt
     
     
-    def AdjustRadius(self, r8):
+    def adjustRadius(self, r8):
         """Adjusts radius r with symmetry. No adjustment is made when symmetry is 8. Radius is viewed
         as the lenght of the symmetric side of an isoceles triangle whose tip (angle alpha) points towards the 
         center of the NPC and whose base is the section between two nodes of a ring at the circumference of the 
@@ -129,19 +129,19 @@ class DeformNPC:
         """
         alpha = 2*np.pi/self.symmet # Angle at the tip of triangular slice (pointing to center of NPC)
         theta = 0.5 * (np.pi - alpha) # Angle at the base of triangular slice
-        halfbase = r8 * np.sin(np.pi/8) # half the distance between two corners of an NPC ring 
+        halfbase = r8 * np.sin(np.pi/8) # half the distance between two corners of an NPC ring (= half the base of triangular slice)
         height = halfbase * np.tan(theta) # height from base to tip of triangular slice
         return np.sqrt(height**2 + halfbase**2) # new radius 
         
                
-    def Pol2cart(self, rho, phi):
+    def pol2cart(self, rho, phi):
         '''Transforms polar coordinates of a point (rho: radius, phi: angle) to 2D cartesian coordinates.
         '''
         x = rho * np.cos(phi)
         y = rho * np.sin(phi)
         return(x, y)
     
-    def Initialcoords(self, r, ringAngle = 0, forces = 0): #TODO real-data coordinates
+    def initialcoords(self, r, ringAngle = 0, forces = 0): #TODO real-data coordinates
         '''
         Generates cartesian coordinates of the NPC given radius and self.symmet 
         ## Input ##
@@ -161,14 +161,14 @@ class DeformNPC:
         initcoord = np.zeros((self.symmet, 2))
         
         for i in range(self.symmet):
-            initcoord[i, 0], initcoord[i, 1] = self.Pol2cart(r + forces[i], 
+            initcoord[i, 0], initcoord[i, 1] = self.pol2cart(r + forces[i], 
                                                              rotAngle+ringAngle)
             rotAngle += 2*np.pi/self.symmet
 
         return initcoord
     
     
-    def Springlengths(self, initcoord): 
+    def springlengths(self, initcoord): 
         '''Compute lengths of springs from coordinates and returns circulant matrix
         '''
         #cart2D = initcoord.reshape(self.symmet,2)
@@ -178,7 +178,7 @@ class DeformNPC:
         return circulant(l)
     
     
-    def Springconstants(self): # TODO: More variable spring constants? 
+    def springconstants(self): # TODO: More variable spring constants? 
         "Returns circulant matrix of spring constants "
         k = np.ones(int(np.floor(self.symmet/2)))
         if(self.symmet%2 == 0): #if symmet is even
@@ -190,7 +190,7 @@ class DeformNPC:
     
     
     
-    def ForcesMultivariateNorm(self, initcoords, mag, nRings = 1): # TODO: include distances to nucleoplasmic ring 
+    def forcesMultivariateNorm(self, initcoords, r, mag, nRings = 1): # TODO: include distances to nucleoplasmic ring 
         '''
         Returns array of Forces that are later applied in radial direction to the NPC corners
         ## Input ## 
@@ -199,25 +199,27 @@ class DeformNPC:
         ## Returns ## 
         For each ring, an array of forces applied to each node
         '''
-        global allcoords
+        # global allcoords
         global AllD
-        global LInv
+        # global LInv
         global cov
+        global cov2
         nodesTotal = self.symmet*nRings # total number of nodes over all rings 
         
         allcoords = np.asarray(initcoords) # separated by NPC rings
         allcoords = allcoords.reshape(nodesTotal, 2) # not separated by NPC rings 
         
-        sigma = 50
+        sigma = np.min(r)
         AllD = np.zeros((nodesTotal, nodesTotal)) # all distances
 
         cov2 = np.zeros((nodesTotal, nodesTotal))
+
+        
         for i in range(nodesTotal):
             for j in range(nodesTotal):
                 AllD[i, j] = np.linalg.norm(allcoords[i, :] - allcoords[j, :])
                 cov2[i, j] = np.exp(-(AllD[i, j]**2 / (2*sigma**2)))
     
-
     
         LInv = AllD.max() - AllD # invert distances  
 
@@ -278,7 +280,7 @@ def ColourcodeZ(z, darkest = 0.1, brightest = 0.5):
 #### Plotting ####################################################################
 plt.rcParams.update({'font.size': 30})
 
-def Plot2D(solution, z = z, symmet = symmet, nConnect = nConnect,  linestyle = "-", trajectory = True, colourcode = True, markersize = 20, forces = 0, showforce = False): # TODO 
+def Plot2D(solution, z = z, symmet = symmet, nConnect = nConnect,  linestyle = "-", trajectory = True, colourcode = True, anchorsprings = True, radialsprings = True, markersize = 20, forces = 0, showforce = False): # TODO 
     '''
     solution: Output of solve_ivp
     symmet: number of nodes
@@ -306,18 +308,20 @@ def Plot2D(solution, z = z, symmet = symmet, nConnect = nConnect,  linestyle = "
         ax.plot(pos2D[viewFrame, :symmet, 0], pos2D[viewFrame,:symmet, 1], 
         linestyle = "", marker = "o", color="gray", markerfacecolor = mainmarkercolor[ring], markersize = markersize, zorder = 50)
         
-        # Anchor springs
-        ax.plot([0,0], [0,0], marker = "o", color = "lightgray", markersize = 15)
-        for i in range(symmet):
-            ax.plot((pos2D[viewFrame, i, 0], 0), (pos2D[viewFrame, i, 1], 0),
-            linestyle = ":", marker = "", color="lightgray")   
+        if (anchorsprings):
+            # Anchor springs
+            ax.plot([0,0], [0,0], marker = "o", color = "lightgray", markersize = 15)
+            for i in range(symmet):
+                ax.plot((pos2D[viewFrame, i, 0], 0), (pos2D[viewFrame, i, 1], 0),
+                linestyle = ":", marker = "", color="lightgray")   
             
         # Radial springs 
-        for ni in range(1, nConnect+1): # neighbours to connect to
-            for i in range(symmet): # node to connect from 
-                ax.plot(pos2D[viewFrame, (i, (i+ni)%symmet), 0], pos2D[viewFrame, (i, (i+ni)%symmet), 1], 
-                linestyle = ":", marker = "", color="gray")#, linewidth = 5)
-    
+        if(radialsprings):
+            for ni in range(1, nConnect+1): # neighbours to connect to
+                for i in range(symmet): # node to connect from 
+                    ax.plot(pos2D[viewFrame, (i, (i+ni)%symmet), 0], pos2D[viewFrame, (i, (i+ni)%symmet), 1], 
+                    linestyle = ":", marker = "", color="gray")#, linewidth = 5)
+        
         # Trajectories 
         if (trajectory):
             if (colourcode): # Colourcoded trajectory
@@ -350,7 +354,7 @@ def Plot2D(solution, z = z, symmet = symmet, nConnect = nConnect,  linestyle = "
                              dx = (forces2d[i, 0] - pos2D[0, i, 0]), 
                              dy = (forces2d[i, 1] - pos2D[0, i, 1]),
                              width = 0.7, color="blue")   
-    if(colourcode):
+    if(trajectory and colourcode):
         axcb = fig.colorbar(line, ax=ax)   
         axcb.set_label('velocity (a.u.)')
             
@@ -429,7 +433,7 @@ def Plot3D(solution, z, symmet, nRings, viewFrame = 0, colour = ["black", "gray"
 
 XYoverTime(solution)
 Plotforces(fcoords, initcoords)
-Plot2D(solution)    
+Plot2D(solution, anchorsprings=False, radialsprings=False, trajectory=False)    
 Plot3D(solution, z, symmet, nRings, viewFrame = -1)#, colour = ["black", "black", "gray", "gray"])
 
 
@@ -550,3 +554,9 @@ if __name__ == '__main__':
 
     plt.show()
 #AnimatedScatter(xy)
+
+plt.scatter(AllD[0], cov[0])
+plt.scatter(AllD[0], cov2[0])
+plt.xlabel("distance")
+plt.ylabel("covariance")
+plt.show()
