@@ -22,8 +22,8 @@ from matplotlib import rc
 from matplotlib.patches import FancyArrowPatch
 
 ### Parameters
-symmet = 8      # Rotational symmetry of the NPC
-mag = 40        # Magnitude of deformation 
+symmet = 6      # Rotational symmetry of the NPC
+mag = 25        # Magnitude of deformation [nm]; 3 standard deviation -> 99.7 % of forces on a node lie within this range
 nConnect = 2    # Number of connected neighbour nodes in clock-wise and anti-clockwise direction
 nRings = 4      # Number of rings 
 
@@ -40,8 +40,8 @@ class DeformNPC:
         
         tlast = 40
         tspan = [0,tlast]      
-        #teval = np.arange(0, tlast, 0.1)
-        teval = None        
+        teval = np.arange(0, tlast, 0.1)
+        #teval = None        
         
         global Lrests
         Lrests = []
@@ -50,7 +50,7 @@ class DeformNPC:
 
         if(nConnect > self.symmet/2):
             nConnect = int(np.floor(self.symmet/2))
-            warn("Selected number of neighbours nConnect too large. nConnect has been set to " + str(nConnect) + ".")
+            warn("Selected number of neighbours nConnect too large. nConnect has been changed to " + str(nConnect) + ".")
         
         if(len(r) != nRings or len(ringAngles) != nRings):
             warn("r and ringAngles must be the same length as nRings")
@@ -59,27 +59,27 @@ class DeformNPC:
             r[i] = self.adjustRadius(r[i])
             initcoord = self.initialcoords(r[i], ringAngle = ringAngles[i])
             self.initcoords.append(initcoord) # TODO remove .flatten()
-                       
             Lrests.append(self.springlengths(initcoord)) 
             Ks.append(self.springconstants())
             y0s.append(np.concatenate((initcoord.flatten(), np.zeros(2 * self.symmet)))) #
-
+        self.r = r  
         self.randfs = self.forcesMultivariateNorm(self.initcoords, r, mag, nRings = nRings) # TODO
-            
+  
         # Solve ODE, ring 1 - 4 
 
         
         for i in range(nRings):
-            self.solution.append(solve_ivp(self.npc, tspan, y0s[i], t_eval=teval, method='RK45', args=(Lrests[i], r[i], Ks[i], kr, self.randfs[i], damp, nConnect)))    
+            self.solution.append(solve_ivp(self.npc, tspan, y0s[i], t_eval=teval, method='RK45', args=(r[i], Lrests[i], Ks[i], kr, self.randfs[i], damp, nConnect)))    
             self.fcoords.append(self.initialcoords(r[i], ringAngles[i], self.randfs[i]))
             
             
     ### Methods 
     
-    def npc(self, t, y, Lrest, r, K, kr, randf, damp, nConnect):
+    def npc(self, t, y, r, Lrest, K, kr, randf, damp, nConnect):
         '''
         t: time points 
         y: values of the solution at t 
+        r: radius of NPC ring
         Lrest: Circulant matrix of resting lengths of all springs 
         K: Circulant matrix of all radial spring constants 
         kr: Spring constants of anchor springs 
@@ -117,18 +117,17 @@ class DeformNPC:
     
     def adjustRadius(self, r8):
         """Adjusts radius r with symmetry. No adjustment is made when symmetry is 8. Radius is viewed
-        as the lenght of the symmetric side of an isoceles triangle whose tip (angle alpha) points towards the 
-        center of the NPC and whose base is the section between two nodes of a ring at the circumference of the 
-        NPC. Think slice of cake.
+        as the length of the symmetric side of an isoceles triangle whose tip (angle alpha) points towards the 
+        center of the NPC and whose base is the section between two neighbouring nodes at the circumference. Think slice of cake.
         # Input: 
         r8: radius of a default 8-fold symmetrical NPC
         
         ## Output: 
-        rnew: radius of NPC with symmetry equal to symmet (rnew = r8 if symmet = 8)
+        radius of NPC with symmetry equal to symmet (rnew = r8 if symmet = 8)
         
         """
         alpha = 2*np.pi/self.symmet # Angle at the tip of triangular slice (pointing to center of NPC)
-        theta = 0.5 * (np.pi - alpha) # Angle at the base of triangular slice
+        theta = 0.5 * (np.pi - alpha) # Either angle at the base of (isosceles) triangular slice
         halfbase = r8 * np.sin(np.pi/8) # half the distance between two corners of an NPC ring (= half the base of triangular slice)
         height = halfbase * np.tan(theta) # height from base to tip of triangular slice
         return np.sqrt(height**2 + halfbase**2) # new radius 
@@ -146,9 +145,11 @@ class DeformNPC:
         Generates cartesian coordinates of the NPC given radius and self.symmet 
         ## Input ##
         r: NPC Radius
+        ringAngle: Angular offset of ring (default 0)
+        forces (optional): input 1D forcevector to view coordinates of forces; used for visualisation
 
         ## Return values ##
-        Cartesian coordinates in 1D and 2D array format 
+        2D Cartesian coordinates 
         '''
         
         if(type(forces) != int):
@@ -171,7 +172,6 @@ class DeformNPC:
     def springlengths(self, initcoord): 
         '''Compute lengths of springs from coordinates and returns circulant matrix
         '''
-        #cart2D = initcoord.reshape(self.symmet,2)
         l = np.zeros(self.symmet)
         for i in range(self.symmet):
             l[i] = np.linalg.norm(initcoord[0, :] - initcoord[i, :])      
@@ -196,14 +196,12 @@ class DeformNPC:
         ## Input ## 
         *coordring: Initial coordinates of nodes for an arbitrary number of rings. 
         mag: Total magnitude of distortion. Default is 50. 
+        r: radius of all NPC rings 
+        nRings: Number of NPC rings (default 1)
         ## Returns ## 
         For each ring, an array of forces applied to each node
         '''
-        # global allcoords
-        global AllD
-        # global LInv
-        global cov
-        global cov2
+
         nodesTotal = self.symmet*nRings # total number of nodes over all rings 
         
         allcoords = np.asarray(initcoords) # separated by NPC rings
@@ -212,31 +210,27 @@ class DeformNPC:
         sigma = np.min(r)
         AllD = np.zeros((nodesTotal, nodesTotal)) # all distances
 
-        cov2 = np.zeros((nodesTotal, nodesTotal))
+        global cov
+        cov = np.zeros((nodesTotal, nodesTotal))
 
         
         for i in range(nodesTotal):
             for j in range(nodesTotal):
                 AllD[i, j] = np.linalg.norm(allcoords[i, :] - allcoords[j, :])
-                cov2[i, j] = np.exp(-(AllD[i, j]**2 / (2*sigma**2)))
+                cov[i, j] = np.exp(-(AllD[i, j]**2 / (2*sigma**2)))
     
-    
-        LInv = AllD.max() - AllD # invert distances  
-
-        cov = [] # covariance matrix 
-        for i in range(nodesTotal):
-            cov.append(list(LInv[i]/AllD.max()))
-
+        
+        mag = (mag/3)**2    # SD to Var
+        cov = mag * cov
         mean = list(np.zeros(nodesTotal)) # Mean of the normal distribution
                 
         rng = np.random.default_rng() # TODO remove seed
-        F = rng.multivariate_normal(mean, cov2)#, size = 1000) # TODO cov2
+        F = rng.multivariate_normal(mean, cov)#, size = 1000) # TODO cov2
+         
+        # initmag = sum(abs(F))
         
-    
-        initmag = sum(abs(F))
-        
-        if (initmag != 0):
-            F = nRings*mag/initmag * F
+        # if (initmag != 0):
+        #     F = nRings*mag/initmag * F
         
         if (nRings) == 1: # TODO: more general return statement 
             return np.split(F, nRings)[0]
@@ -254,6 +248,7 @@ fcoords = deformNPC.fcoords # coordinates of force vectors
 initcoords = deformNPC.initcoords # starting coordinates 
 randfs = deformNPC.randfs # magnitude of forces
 z = deformNPC.z
+r = deformNPC.r
 
 def Sol2D(solution):
     """"""
@@ -451,7 +446,7 @@ Export2CSV
 #%matplotlib qt # Run in console if python doesn't show plot 
 class AnimatedScatter(object):
     """An animated scatter plot using matplotlib.animations.FuncAnimation."""
-    def __init__(self, solution, nRings, numpoints = symmet+1):
+    def __init__(self, solution, nRings, nConnect, symmet, r, numpoints = symmet+1):
         self.solution = solution
         
         framenumbers = []
@@ -462,8 +457,12 @@ class AnimatedScatter(object):
             return
     
         self.nRings = nRings
+        self.nConnect = nConnect
+        self.symmet = symmet
+        self.r = r
         self.numpoints = numpoints
         self.xy = self.xydata()
+        
         
         self.stream = self.data_stream(self.xy)
         # Setup the figure and axes...
@@ -478,7 +477,7 @@ class AnimatedScatter(object):
     def xydata(self):
         xy = []
         for ring in range(self.nRings):
-            xy.append(Pos2D(solution[ring])[:, np.append(np.arange(symmet), 0)])
+            xy.append(Pos2D(solution[ring])[:, np.append(np.arange(self.symmet), 0)])
         return xy
             
     def setup_plot(self):
@@ -489,27 +488,29 @@ class AnimatedScatter(object):
         # n * symmet * rings to plot circumferential spring
 
         self.lines = []
-        for index in range(int(8 + 8*2*4)):
-            if (index <= 1):
-                self.lobj = self.ax.plot([], [], marker = "o", color = "gray", markerfacecolor = "gray", linestyle = "-", markersize = 15)
-            elif (index > 1 and index <=3):
-                self.lobj = self.ax.plot([], [], marker = "o", color = "gray", markerfacecolor = "black", linestyle = "-", markersize = 15)
-            elif (index > 3 and index <= 7):
-                self.lobj = self.ax.plot([], [], marker = "", color = "lightgray", linestyle = "-")
-
-            else:
+        #for index in range(int(8 + 8*2*4)):
+        for index in range(int(self.symmet + self.symmet*self.nRings*2)):   #TODO if conditions wrong
+            if (index <= 1): # 0, 1: lower rings
+                self.lobj = self.ax.plot([], [], marker = "o", color = "gray", markerfacecolor = "gray", linestyle = "-", markersize = 15) 
+            elif (index > 1 and index <=3): #2, 3 upper rings
+                self.lobj = self.ax.plot([], [], marker = "o", color = "gray", markerfacecolor = "black", linestyle = "-", markersize = 15) 
+            elif (index > 3 and index <= 7): #4, 5, 6, 7 rings to anchor
+                self.lobj = self.ax.plot([], [], marker = "", color = "lightgray", linestyle = "-") # anchor
+            else: # 8 - 72 #all circumferential springs
                 self.lobj = self.ax.plot([], [], marker = "", color = "gray", linestyle = "-")
 
             self.lines.append(self.lobj)
         
         self.ax.axis("scaled")
         self.ax.set(xlabel = "x (nm)", ylabel = "y (nm)")  
-        self.ax.axis([-80, 80, -80, 80])
-        return [self.lines[i][0] for i in range(int(8 + 8*2*4))]#self.lines[0][0], self.lines[1][0], self.lines[2][0], self.lines[3][0], self.lines[4][0], self.lines[5][0],self.lines[6][0], self.lines[7][0],#self.line, self.line1, self.line2, self.line3, self.lineA, self.lineA1, self.lineA2, self.lineA3,
-
+        axscale = 1.1 * max(self.r) 
+        self.ax.axis([-axscale, axscale, -axscale, axscale])
+        #return [self.lines[i][0] for i in range(int(8 + 8*2*4))]#self.lines[0][0], self.lines[1][0], self.lines[2][0], self.lines[3][0], self.lines[4][0], self.lines[5][0],self.lines[6][0], self.lines[7][0],#self.line, self.line1, self.line2, self.line3, self.lineA, self.lineA1, self.lineA2, self.lineA3,
+        return [self.lines[i][0] for i in range(int(self.symmet + self.symmet*self.nRings*2))]
+        
     def data_stream(self, pos):
-        x = np.zeros((symmet+1, self.nRings))
-        y = np.zeros((symmet+1, self.nRings))
+        x = np.zeros((self.symmet+1, self.nRings))
+        y = np.zeros((self.symmet+1, self.nRings))
         while True: 
             for i in range(len(self.xy[0])):
                 for ring in range(self.nRings):
@@ -522,14 +523,15 @@ class AnimatedScatter(object):
 
         x, y = next(self.stream)
         
-        xa = np.zeros((2*symmet, self.nRings))
-        ya = np.zeros((2*symmet, self.nRings))     
+        xa = np.zeros((2*self.symmet, self.nRings))
+        ya = np.zeros((2*self.symmet, self.nRings))     
         
         for ring in range(nRings):
-            for i in range(1, 2*symmet, 2): 
+            for i in range(1, 2*self.symmet, 2): 
                 xa[i, ring] = x[int((i-1)/2), ring]
                 ya[i, ring] = y[int((i-1)/2), ring]
         
+        global xlist
         xlist = list(x.T) + list(xa.T)
         ylist = list(y.T) + list(ya.T)
                 
@@ -538,25 +540,25 @@ class AnimatedScatter(object):
                 break
             self.line[0].set_data(xlist[lnum], ylist[lnum]) 
 
-        n = 2 # TODO 
+        n = self.nConnect # TODO 
         count = len(xlist)
-        for lnum in range(4):
+        for lnum in range(nRings):
             for ni in range(1, n+1): # neighbours to connect to
-                for i in range(symmet): # node to connect from 
-                    self.lines[count][0].set_data((xlist[lnum][i], xlist[lnum][(i+ni)%symmet]), (ylist[lnum][i], ylist[lnum][(i+ni)%symmet]))
+                for i in range(self.symmet): # node to connect from 
+                    self.lines[count][0].set_data((xlist[lnum][i], xlist[lnum][(i+ni)%self.symmet]), (ylist[lnum][i], ylist[lnum][(i+ni)%symmet])) # TODO error
                     count += 1
         
-        return [self.lines[i][0] for i in range(int(8 + 8*2*4))]#self.lines[0][0], self.lines[1][0], self.lines[2][0], self.lines[3][0], self.lines[4][0], self.lines[5][0],self.lines[6][0], self.lines[7][0], #self.line, self.line1, self.line2, self.line3, self.lineA, self.lineA1, self.lineA2, self.lineA3,
-
+        #return [self.lines[i][0] for i in range(int(8 + 8*2*4))]#self.lines[0][0], self.lines[1][0], self.lines[2][0], self.lines[3][0], self.lines[4][0], self.lines[5][0],self.lines[6][0], self.lines[7][0], #self.line, self.line1, self.line2, self.line3, self.lineA, self.lineA1, self.lineA2, self.lineA3,
+        return [self.lines[i][0] for i in range(int(self.symmet + self.symmet*self.nRings*2))]
 
 if __name__ == '__main__':
-    a = AnimatedScatter(solution, nRings)
+    a = AnimatedScatter(solution, nRings, nConnect, symmet, r)
 
     plt.show()
 #AnimatedScatter(xy)
 
-plt.scatter(AllD[0], cov[0])
-plt.scatter(AllD[0], cov2[0])
-plt.xlabel("distance")
-plt.ylabel("covariance")
-plt.show()
+# plt.scatter(AllD[0], cov[0])
+# plt.scatter(AllD[0], cov2[0])
+# plt.xlabel("distance")
+# plt.ylabel("covariance")
+# plt.show()
