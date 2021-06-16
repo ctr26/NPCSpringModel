@@ -22,7 +22,7 @@ from matplotlib import rc
 from matplotlib.patches import FancyArrowPatch
 
 ### Parameters
-symmet = 6      # Rotational symmetry of the NPC
+symmet = 8      # Rotational symmetry of the NPC
 mag = 25        # Magnitude of deformation [nm]; 3 standard deviation -> 99.7 % of forces on a node lie within this range
 nConnect = 2    # Number of connected neighbour nodes in clock-wise and anti-clockwise direction
 nRings = 4      # Number of rings 
@@ -40,10 +40,9 @@ class DeformNPC:
         
         tlast = 40
         tspan = [0,tlast]      
-        teval = np.arange(0, tlast, 0.1)
+        teval = np.arange(0, tlast, 0.4)
         #teval = None        
         
-        global Lrests
         Lrests = []
         Ks = []
         y0s = [] 
@@ -220,7 +219,7 @@ class DeformNPC:
                 cov[i, j] = np.exp(-(AllD[i, j]**2 / (2*sigma**2)))
     
         
-        mag = (mag/3)**2    # SD to Var
+        mag = (mag/3)**2    # 3*SD to Var
         cov = mag * cov
         mean = list(np.zeros(nodesTotal)) # Mean of the normal distribution
                 
@@ -423,15 +422,6 @@ def Plot3D(solution, z, symmet, nRings, viewFrame = 0, colour = ["black", "gray"
     plt.show()
 
 
-
-
-
-XYoverTime(solution)
-Plotforces(fcoords, initcoords)
-Plot2D(solution, anchorsprings=False, radialsprings=False, trajectory=False)    
-Plot3D(solution, z, symmet, nRings, viewFrame = -1)#, colour = ["black", "black", "gray", "gray"])
-
-
 def Export2CSV():
     with open('/home/maria/Documents/NPCPython/NPCexampleposter3.csv', 'w', newline='') as csvfile:
         spamwriter = csv.writer(csvfile, delimiter=',',
@@ -440,36 +430,36 @@ def Export2CSV():
             for node in range(symmet):
                 spamwriter.writerow(np.append(Pos2D(solution[ring])[-1,node], z[ring]))
     
-Export2CSV
 
-
-#%matplotlib qt # Run in console if python doesn't show plot 
 class AnimatedScatter(object):
     """An animated scatter plot using matplotlib.animations.FuncAnimation."""
-    def __init__(self, solution, nRings, nConnect, symmet, r, numpoints = symmet+1):
+    def __init__(self, solution, nRings, nConnect, symmet, r, randfs):
         self.solution = solution
-        
+        self.nRings = nRings
+
         framenumbers = []
-        for i in range(nRings):
-            framenumbers.append(len(self.solution[i].t))
+        for i in range(self.nRings): # check framenumbers are consistent for each ring
+            framenumbers.append(len(self.solution[i].t)) 
         if (len(set(framenumbers)) != 1):
             warn("Number of timesteps for all ring must be the same in order to animate deformation.")
             return
-    
-        self.nRings = nRings
+        if (nRings != 4):
+            warn("Animation function works correctly only for 4 NPC rings at the moment.")
+            return
+        nframes = len(self.solution[0].t)
+        
         self.nConnect = nConnect
         self.symmet = symmet
-        self.r = r
-        self.numpoints = numpoints
         self.xy = self.xydata()
-        
         
         self.stream = self.data_stream(self.xy)
         # Setup the figure and axes...
+        self.axscale = 1.2 * (np.amax(randfs) + max(r))
         self.fig, self.ax = plt.subplots(figsize = (9, 10))
         plt.rcParams.update({'font.size': 20})
         # Then setup FuncAnimation.
-        self.ani = animation.FuncAnimation(self.fig, self.update, interval=15, frames = len(self.xy), #TODO change frames back to nFrames?
+
+        self.ani = animation.FuncAnimation(self.fig, self.update, interval=(5000/nframes), #frames = nframes,#len(self.xy), #TODO change frames back to nFrames?
                                           init_func=self.setup_plot, blit=True)
         #HTML(self.ani.to_html5_video())
         self.ani.save("Damping0.mp4", dpi = 250)
@@ -485,28 +475,26 @@ class AnimatedScatter(object):
 #        x, y, x1, y1, x2, y2, x3, y3 = next(self.stream).T
         # 4 to plot x-y coords
         # 4 to plot anchor springs 
-        # n * symmet * rings to plot circumferential spring
+
 
         self.lines = []
         #for index in range(int(8 + 8*2*4)):
-        for index in range(int(self.symmet + self.symmet*self.nRings*2)):   #TODO if conditions wrong
+        for index in range(int(self.nRings*2 + self.symmet*self.nRings*self.nConnect)):   #TODO code for 4 rings!
             if (index <= 1): # 0, 1: lower rings
-                self.lobj = self.ax.plot([], [], marker = "o", color = "gray", markerfacecolor = "gray", linestyle = "-", markersize = 15) 
+                self.lobj = self.ax.plot([], [], marker = "o", color = "gray", markerfacecolor = "gray", linestyle = "", markersize = 15) 
             elif (index > 1 and index <=3): #2, 3 upper rings
-                self.lobj = self.ax.plot([], [], marker = "o", color = "gray", markerfacecolor = "black", linestyle = "-", markersize = 15) 
+                self.lobj = self.ax.plot([], [], marker = "o", color = "gray", markerfacecolor = "black", linestyle = "", markersize = 15) 
             elif (index > 3 and index <= 7): #4, 5, 6, 7 rings to anchor
-                self.lobj = self.ax.plot([], [], marker = "", color = "lightgray", linestyle = "-") # anchor
-            else: # 8 - 72 #all circumferential springs
-                self.lobj = self.ax.plot([], [], marker = "", color = "gray", linestyle = "-")
+                self.lobj = self.ax.plot([], [], marker = "", color = "orange", linestyle = "-", zorder = 0) # anchor
+            else: # 8 - ? #all circumferential springs
+                self.lobj = self.ax.plot([], [], marker = "", color = "blue", linestyle = "-")
 
             self.lines.append(self.lobj)
         
         self.ax.axis("scaled")
         self.ax.set(xlabel = "x (nm)", ylabel = "y (nm)")  
-        axscale = 1.1 * max(self.r) 
-        self.ax.axis([-axscale, axscale, -axscale, axscale])
-        #return [self.lines[i][0] for i in range(int(8 + 8*2*4))]#self.lines[0][0], self.lines[1][0], self.lines[2][0], self.lines[3][0], self.lines[4][0], self.lines[5][0],self.lines[6][0], self.lines[7][0],#self.line, self.line1, self.line2, self.line3, self.lineA, self.lineA1, self.lineA2, self.lineA3,
-        return [self.lines[i][0] for i in range(int(self.symmet + self.symmet*self.nRings*2))]
+        self.ax.axis([-self.axscale, self.axscale, -self.axscale, self.axscale])
+        return [self.lines[i][0] for i in range(int(self.nRings*2 + self.symmet*self.nRings*self.nConnect))]
         
     def data_stream(self, pos):
         x = np.zeros((self.symmet+1, self.nRings))
@@ -526,7 +514,7 @@ class AnimatedScatter(object):
         xa = np.zeros((2*self.symmet, self.nRings))
         ya = np.zeros((2*self.symmet, self.nRings))     
         
-        for ring in range(nRings):
+        for ring in range(self.nRings):
             for i in range(1, 2*self.symmet, 2): 
                 xa[i, ring] = x[int((i-1)/2), ring]
                 ya[i, ring] = y[int((i-1)/2), ring]
@@ -540,25 +528,29 @@ class AnimatedScatter(object):
                 break
             self.line[0].set_data(xlist[lnum], ylist[lnum]) 
 
-        n = self.nConnect # TODO 
+        # TODO code  works only for 4 rings!
         count = len(xlist)
-        for lnum in range(nRings):
-            for ni in range(1, n+1): # neighbours to connect to
+        for lnum in range(self.nRings):
+            for ni in range(1, self.nConnect+1): # neighbours to connect to
                 for i in range(self.symmet): # node to connect from 
-                    self.lines[count][0].set_data((xlist[lnum][i], xlist[lnum][(i+ni)%self.symmet]), (ylist[lnum][i], ylist[lnum][(i+ni)%symmet])) # TODO error
+                    self.lines[count][0].set_data((xlist[lnum][i], xlist[lnum][(i+ni)%self.symmet]), (ylist[lnum][i], ylist[lnum][(i+ni)%self.symmet])) 
                     count += 1
+                    #print(count)
         
         #return [self.lines[i][0] for i in range(int(8 + 8*2*4))]#self.lines[0][0], self.lines[1][0], self.lines[2][0], self.lines[3][0], self.lines[4][0], self.lines[5][0],self.lines[6][0], self.lines[7][0], #self.line, self.line1, self.line2, self.line3, self.lineA, self.lineA1, self.lineA2, self.lineA3,
-        return [self.lines[i][0] for i in range(int(self.symmet + self.symmet*self.nRings*2))]
+        return [self.lines[i][0] for i in range(int(self.nRings*2 + self.symmet*self.nRings*self.nConnect))]
 
 if __name__ == '__main__':
-    a = AnimatedScatter(solution, nRings, nConnect, symmet, r)
+    a = AnimatedScatter(solution, nRings, nConnect, symmet, r, randfs)
 
     plt.show()
-#AnimatedScatter(xy)
 
-# plt.scatter(AllD[0], cov[0])
-# plt.scatter(AllD[0], cov2[0])
-# plt.xlabel("distance")
-# plt.ylabel("covariance")
-# plt.show()
+
+#%matplotlib qt # Run in console if python doesn't show plot 
+
+#XYoverTime(solution)
+#Plotforces(fcoords, initcoords)
+#Plot2D(solution, anchorsprings=False, radialsprings=False, trajectory=False)    
+#Plot3D(solution, z, symmet, nRings, viewFrame = -1)#, colour = ["black", "black", "gray", "gray"])
+#Export2CSV
+
