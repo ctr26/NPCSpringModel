@@ -12,68 +12,93 @@ from scipy.linalg import circulant
 import matplotlib.pyplot as plt
 from matplotlib.collections import LineCollection
 from warnings import warn
-import timeit
+#import timeit
 import seaborn as sns
-from mpl_toolkits.mplot3d import Axes3D
 import csv
 import matplotlib.animation as animation
-from IPython.display import HTML
-from matplotlib import rc
-from matplotlib.patches import FancyArrowPatch
+#from IPython.display import HTML
+#from matplotlib import rc
+#from matplotlib.patches import FancyArrowPatch
 
 ### Parameters
 symmet = 8      # Rotational symmetry of the NPC
 mag = 25        # Magnitude of deformation [nm]; 3 standard deviation -> 99.7 % of forces on a node lie within this range
 nConnect = 2    # Number of connected neighbour nodes in clock-wise and anti-clockwise direction
 nRings = 4      # Number of rings 
+r = [50, 54, 54, 50]
+ringAngles = [0, 0.2069, 0.2407, 0.4476]
+z = [0, 0, 50, 50]
 
 class DeformNPC:
-    def __init__(self, symmet, nConnect, mag, nRings = 1, r = 0, ringAngles = 0, z = 0):
-        self.symmet = symmet
-        self.initcoords = []        
-        self.solution = []
-        self.fcoords = []    
-        self.z = z
+    def __init__(self, nConnect = 2, mag = 25, symmet = 8, nRings = 1, r = 0, ringAngles = 0, z = 0):
+        '''
+        Models deformed NPCs using solve_ivp based on a simple, rotationally symmetric node and spring model with deforming forces applied in xy direcion. 
+        ### Input ###
+        nConnect: Number of connected neighbour nodes in clock-wise and anti-clockwise direction
+        mag: Magnitude of deformation [nm]. Number represents 3 standard deviations -> 99.7 % of forces on a node lie within this range
+        symmet: Symmetry of the NPC (Default 8 )
+        nRings: Number of NPC rings 
+        r: Radius of NPC rings assuming 8-fold symmetry. Must be a list of length nRings
+        ringAngles: Rotational angle offset of NPC rings. Must be a list of length nRings
+        z: z position of NPC rings. Stays unchanged. Must be a list of length nRings
+        
+        ### Relevant output ###
+        solution: solve_ivp output for all NPC rings 
+        fcoords: Coordinates of force vectors for all NPC rings
+        initcoords: starting coordinates 
+        randfs: list of magnitude of forces for all NPC rings 
+        r: Radius of NPC rings corrected for symmetry (i.e. increasing with symmetry)
+        z: z position of NPC rings
+       
+        '''
+        self.solution = [] 
+        self.symmet = symmet # Rotational symmetry of the NPC
+        self.initcoords = [] # starting coordinates of nodes    
+        self.fcoords = []    # Coordinates of forces 
+        self.z = z # z coordinates (stays unchanged)
         
         damp = 1 # damping
         kr = 0.7 # spring constant of anchor spring 
         
         tlast = 40
         tspan = [0,tlast]      
-        teval = np.arange(0, tlast, 0.4)
-        #teval = None        
+        #teval = np.arange(0, tlast, 0.2) # needed for animation function
+        teval = None        
         
-        Lrests = []
-        Ks = []
-        y0s = [] 
+        Lrests = [] # circulant matrix of resting spring lengths
+        Ks = [] # circulant matrix of spring constants 
+        y0s = [] # initial coordinates and velocities per node
 
         if(nConnect > self.symmet/2):
             nConnect = int(np.floor(self.symmet/2))
             warn("Selected number of neighbours nConnect too large. nConnect has been changed to " + str(nConnect) + ".")
         
-        if(len(r) != nRings or len(ringAngles) != nRings):
-            warn("r and ringAngles must be the same length as nRings")
+        if(len(r) != nRings or len(ringAngles) != nRings or len(z) != nRings):
+            warn("r, ringAngles, and z must be of length nRings: " + str(nRings))
 
         for i in range(nRings):  
             r[i] = self.adjustRadius(r[i])
             initcoord = self.initialcoords(r[i], ringAngle = ringAngles[i])
-            self.initcoords.append(initcoord) # TODO remove .flatten()
+            self.initcoords.append(initcoord) 
             Lrests.append(self.springlengths(initcoord)) 
             Ks.append(self.springconstants())
-            y0s.append(np.concatenate((initcoord.flatten(), np.zeros(2 * self.symmet)))) #
-        self.r = r  
-        self.randfs = self.forcesMultivariateNorm(self.initcoords, r, mag, nRings = nRings) # TODO
+            y0s.append(np.concatenate((initcoord.flatten(), np.zeros(2 * self.symmet)))) 
+ 
+        self.randfs = self.forcesMultivariateNorm(self.initcoords, r, mag, nRings = nRings) # generate random forces
   
-        # Solve ODE, ring 1 - 4 
-
-        
+        # Solve ODE, ring 1 - 4       
         for i in range(nRings):
-            self.solution.append(solve_ivp(self.npc, tspan, y0s[i], t_eval=teval, method='RK45', args=(r[i], Lrests[i], Ks[i], kr, self.randfs[i], damp, nConnect)))    
+            self.solution.append(solve_ivp(self.npc, tspan, y0s[i], t_eval=teval, 
+                                           method='RK45', args=(r[i], Lrests[i], 
+                                        Ks[i], kr, self.randfs[i], damp, nConnect)))   
+            
             self.fcoords.append(self.initialcoords(r[i], ringAngles[i], self.randfs[i]))
+        
+        self.r = r    
             
-            
-    ### Methods 
-    
+    ### Methods ###
+
+
     def npc(self, t, y, r, Lrest, K, kr, randf, damp, nConnect):
         '''
         t: time points 
@@ -130,14 +155,15 @@ class DeformNPC:
         halfbase = r8 * np.sin(np.pi/8) # half the distance between two corners of an NPC ring (= half the base of triangular slice)
         height = halfbase * np.tan(theta) # height from base to tip of triangular slice
         return np.sqrt(height**2 + halfbase**2) # new radius 
-        
                
+      
     def pol2cart(self, rho, phi):
         '''Transforms polar coordinates of a point (rho: radius, phi: angle) to 2D cartesian coordinates.
         '''
         x = rho * np.cos(phi)
         y = rho * np.sin(phi)
         return(x, y)
+    
     
     def initialcoords(self, r, ringAngle = 0, forces = 0): #TODO real-data coordinates
         '''
@@ -188,7 +214,6 @@ class DeformNPC:
         return K
     
     
-    
     def forcesMultivariateNorm(self, initcoords, r, mag, nRings = 1): # TODO: include distances to nucleoplasmic ring 
         '''
         Returns array of Forces that are later applied in radial direction to the NPC corners
@@ -206,25 +231,23 @@ class DeformNPC:
         allcoords = np.asarray(initcoords) # separated by NPC rings
         allcoords = allcoords.reshape(nodesTotal, 2) # not separated by NPC rings 
         
-        sigma = np.min(r)
-        AllD = np.zeros((nodesTotal, nodesTotal)) # all distances
-
-        global cov
-        cov = np.zeros((nodesTotal, nodesTotal))
+        sigma = np.min(r) # free parameter of RBF kernel that outputs covariance of forces on two nodes based on their euclidean distance
+        
+        AllD = np.zeros((nodesTotal, nodesTotal)) # all distances between nodes
+        cov = np.zeros((nodesTotal, nodesTotal)) # covariance matrix based on which random forces on nodes are drawn 
 
         
         for i in range(nodesTotal):
             for j in range(nodesTotal):
                 AllD[i, j] = np.linalg.norm(allcoords[i, :] - allcoords[j, :])
-                cov[i, j] = np.exp(-(AllD[i, j]**2 / (2*sigma**2)))
-    
-        
+                cov[i, j] = np.exp(-(AllD[i, j]**2 / (2*sigma**2))) # RBF
+            
         mag = (mag/3)**2    # 3*SD to Var
-        cov = mag * cov
+        cov = mag * cov 
         mean = list(np.zeros(nodesTotal)) # Mean of the normal distribution
                 
-        rng = np.random.default_rng() # TODO remove seed
-        F = rng.multivariate_normal(mean, cov)#, size = 1000) # TODO cov2
+        rng = np.random.default_rng() 
+        F = rng.multivariate_normal(mean, cov)
          
         # initmag = sum(abs(F))
         
@@ -234,14 +257,11 @@ class DeformNPC:
         if (nRings) == 1: # TODO: more general return statement 
             return np.split(F, nRings)[0]
         else:
-            return np.split(F, nRings)#np.array_split(F, nrings)
+            return np.split(F, nRings)
 
 
-r = [50, 54, 54, 50]
-ringAngles = [0, 0.2069, 0.2407, 0.4476]
-z = [0, 0, 50, 50]
-
-deformNPC = DeformNPC(symmet, nConnect, mag, nRings = nRings, r = r, ringAngles = ringAngles, z = z)
+### Instantiate DeformNPC
+deformNPC = DeformNPC(nConnect, mag, symmet = symmet, nRings = nRings, r = r, ringAngles = ringAngles, z = z)
 solution = deformNPC.solution
 fcoords = deformNPC.fcoords # coordinates of force vectors
 initcoords = deformNPC.initcoords # starting coordinates 
@@ -249,8 +269,13 @@ randfs = deformNPC.randfs # magnitude of forces
 z = deformNPC.z
 r = deformNPC.r
 
+
+### Functions to help with plotting and CSV generation
 def Sol2D(solution):
-    """"""
+    """
+    input: DeformNPC.solution for a given NPC ring
+    output: 2D arrays of position and of velocity of nodes in a ring over time [timeframe, node, dimension (x or y)]
+    """
     nFrames = len(solution.t)
     symmet = int(len(solution.y)/4) #/4 because of 2 dim times both velocity and position 
     pos1D = solution.y.T[: , :2*symmet] # positions over time
@@ -288,19 +313,16 @@ def Plot2D(solution, z = z, symmet = symmet, nConnect = nConnect,  linestyle = "
         
     #trajectories = False 
     fig, ax = plt.subplots(1, 1, figsize = (10, 10))
-    viewFrame = -1 # 0 is the first frame, -1 is the last frame
-    #mainmarkercolor = ["darkgray", "darkgray", "black", "black"]
-    #mainmarkercolor = ["0.2", "0.2", "0", "0"]
-    
+    viewFrame = -1 # 0 is the first frame, -1 is the last frame  
     mainmarkercolor = ColourcodeZ(z)
     
-    for ring in range(nRings):
+    for i in range(nRings):
         
-        nFrames = len(solution[ring].t)# Nodes at last timestep
-        pos2D, vel2D = Sol2D(solution[ring])
+        nFrames = len(solution[i].t)# Nodes at last timestep
+        pos2D, vel2D = Sol2D(solution[i])
         
         ax.plot(pos2D[viewFrame, :symmet, 0], pos2D[viewFrame,:symmet, 1], 
-        linestyle = "", marker = "o", color="gray", markerfacecolor = mainmarkercolor[ring], markersize = markersize, zorder = 50)
+        linestyle = "", marker = "o", color="gray", markerfacecolor = mainmarkercolor[i], markersize = markersize, zorder = 50)
         
         if (anchorsprings):
             # Anchor springs
@@ -364,7 +386,7 @@ def Plotforces(fcoords, initcoords):
     
     fig, ax1 = plt.subplots(1,1, figsize = (10, 10))
     
-    for i in range(allnodes):#int(nodes/2)):
+    for i in range(allnodes):
         ax1.arrow(x = initcoords[i,0], y = initcoords[i,1], 
         dx = (fcoords[i,0] - initcoords[i,0]), dy = (fcoords[i,1] - initcoords[i,1]),
         width = 0.7, color="blue") 
@@ -372,10 +394,9 @@ def Plotforces(fcoords, initcoords):
 
 
 
-def XYoverTime(solution, symmet = symmet, nRings = nRings, linestyle = "-", legend = False):
-    
+def XYoverTime(solution, symmet = symmet, nRings = nRings, linestyle = "-", legend = False): 
+    '''x and y positions over time'''
     fig, ax = plt.subplots(1,1, figsize = (10, 10))
-    # Position over time
     palette = sns.color_palette("hsv", 2*symmet)
     for ring in range(nRings):
         for i in range(symmet):
@@ -389,8 +410,7 @@ def XYoverTime(solution, symmet = symmet, nRings = nRings, linestyle = "-", lege
 
 
 
-def Plot3D(solution, z, symmet, nRings, viewFrame = 0, colour = ["black", "gray"]):
-## 3D plot
+def Plot3D(solution, z, symmet, nRings, viewFrame = -1, colour = ["black", "gray"]):
     '''viewFrame: 0 is first frame, -1 is last frame'''
     fig = plt.figure(figsize = (15,15))
     ax = fig.add_subplot(111, projection='3d')
@@ -416,8 +436,7 @@ def Plot3D(solution, z, symmet, nRings, viewFrame = 0, colour = ["black", "gray"
     ax.xaxis.pane.set_edgecolor('w')
     ax.yaxis.pane.set_edgecolor('w')
     ax.zaxis.pane.set_edgecolor('w')
-    
-    # Bonus: To get rid of the grid as well:
+
     ax.grid(False)
     plt.show()
 
@@ -438,6 +457,7 @@ class AnimatedScatter(object):
         self.nRings = nRings
 
         framenumbers = []
+        
         for i in range(self.nRings): # check framenumbers are consistent for each ring
             framenumbers.append(len(self.solution[i].t)) 
         if (len(set(framenumbers)) != 1):
@@ -446,20 +466,21 @@ class AnimatedScatter(object):
         if (nRings != 4):
             warn("Animation function works correctly only for 4 NPC rings at the moment.")
             return
+        
         nframes = len(self.solution[0].t)
         
         self.nConnect = nConnect
         self.symmet = symmet
-        self.xy = self.xydata()
-        
+        self.xy = self.xydata()        
         self.stream = self.data_stream(self.xy)
+        
         # Setup the figure and axes...
         self.axscale = 1.2 * (np.amax(randfs) + max(r))
         self.fig, self.ax = plt.subplots(figsize = (9, 10))
         plt.rcParams.update({'font.size': 20})
+        
         # Then setup FuncAnimation.
-
-        self.ani = animation.FuncAnimation(self.fig, self.update, interval=(5000/nframes), #frames = nframes,#len(self.xy), #TODO change frames back to nFrames?
+        self.ani = animation.FuncAnimation(self.fig, self.update, interval=(5000/nframes), 
                                           init_func=self.setup_plot, blit=True)
         #HTML(self.ani.to_html5_video())
         self.ani.save("Damping0.mp4", dpi = 250)
@@ -472,19 +493,14 @@ class AnimatedScatter(object):
             
     def setup_plot(self):
         """Initial drawing of the scatter plot."""
-#        x, y, x1, y1, x2, y2, x3, y3 = next(self.stream).T
-        # 4 to plot x-y coords
-        # 4 to plot anchor springs 
-
 
         self.lines = []
-        #for index in range(int(8 + 8*2*4)):
-        for index in range(int(self.nRings*2 + self.symmet*self.nRings*self.nConnect)):   #TODO code for 4 rings!
-            if (index <= 1): # 0, 1: lower rings
+        for i in range(int(self.nRings*2 + self.symmet*self.nRings*self.nConnect)):   #TODO code for 4 rings!
+            if (i <= 1): # 0, 1: lower rings
                 self.lobj = self.ax.plot([], [], marker = "o", color = "gray", markerfacecolor = "gray", linestyle = "", markersize = 15) 
-            elif (index > 1 and index <=3): #2, 3 upper rings
+            elif (i > 1 and i <=3): #2, 3 upper rings
                 self.lobj = self.ax.plot([], [], marker = "o", color = "gray", markerfacecolor = "black", linestyle = "", markersize = 15) 
-            elif (index > 3 and index <= 7): #4, 5, 6, 7 rings to anchor
+            elif (i > 3 and i <= 7): #4, 5, 6, 7: 4 rings to anchor
                 self.lobj = self.ax.plot([], [], marker = "", color = "orange", linestyle = "-", zorder = 0) # anchor
             else: # 8 - ? #all circumferential springs
                 self.lobj = self.ax.plot([], [], marker = "", color = "blue", linestyle = "-")
@@ -494,6 +510,7 @@ class AnimatedScatter(object):
         self.ax.axis("scaled")
         self.ax.set(xlabel = "x (nm)", ylabel = "y (nm)")  
         self.ax.axis([-self.axscale, self.axscale, -self.axscale, self.axscale])
+        
         return [self.lines[i][0] for i in range(int(self.nRings*2 + self.symmet*self.nRings*self.nConnect))]
         
     def data_stream(self, pos):
@@ -519,7 +536,6 @@ class AnimatedScatter(object):
                 xa[i, ring] = x[int((i-1)/2), ring]
                 ya[i, ring] = y[int((i-1)/2), ring]
         
-        global xlist
         xlist = list(x.T) + list(xa.T)
         ylist = list(y.T) + list(ya.T)
                 
@@ -535,9 +551,6 @@ class AnimatedScatter(object):
                 for i in range(self.symmet): # node to connect from 
                     self.lines[count][0].set_data((xlist[lnum][i], xlist[lnum][(i+ni)%self.symmet]), (ylist[lnum][i], ylist[lnum][(i+ni)%self.symmet])) 
                     count += 1
-                    #print(count)
-        
-        #return [self.lines[i][0] for i in range(int(8 + 8*2*4))]#self.lines[0][0], self.lines[1][0], self.lines[2][0], self.lines[3][0], self.lines[4][0], self.lines[5][0],self.lines[6][0], self.lines[7][0], #self.line, self.line1, self.line2, self.line3, self.lineA, self.lineA1, self.lineA2, self.lineA3,
         return [self.lines[i][0] for i in range(int(self.nRings*2 + self.symmet*self.nRings*self.nConnect))]
 
 if __name__ == '__main__':
@@ -548,9 +561,9 @@ if __name__ == '__main__':
 
 #%matplotlib qt # Run in console if python doesn't show plot 
 
-#XYoverTime(solution)
-#Plotforces(fcoords, initcoords)
-#Plot2D(solution, anchorsprings=False, radialsprings=False, trajectory=False)    
-#Plot3D(solution, z, symmet, nRings, viewFrame = -1)#, colour = ["black", "black", "gray", "gray"])
+XYoverTime(solution)
+Plotforces(fcoords, initcoords)
+Plot2D(solution, anchorsprings=False, radialsprings=False, trajectory=False)    
+Plot3D(solution, z, symmet, nRings, viewFrame = -1)#, colour = ["black", "black", "gray", "gray"])
 #Export2CSV
 
