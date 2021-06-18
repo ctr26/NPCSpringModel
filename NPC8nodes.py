@@ -119,7 +119,7 @@ class DeformNPC:
         anc = np.array([0., 0.]) # coordinates of anchor node   
         F = np.zeros((self.symmet, 2)) # Forces
         
-        for i in range(self.symmet): # TODO test
+        for i in range(self.symmet): 
             F[i] = randf[i]*x[i] / np.linalg.norm([x[i], anc]) 
     
         allaccarray = np.zeros((self.symmet, 2)) # array for accelerations of node 0 - 7
@@ -165,7 +165,7 @@ class DeformNPC:
         return(x, y)
     
     
-    def initialcoords(self, r, ringAngle = 0, forces = 0): #TODO real-data coordinates
+    def initialcoords(self, r, ringAngle = 0, forces = 0): 
         '''
         Generates cartesian coordinates of the NPC given radius and self.symmet 
         ## Input ##
@@ -214,7 +214,7 @@ class DeformNPC:
         return K
     
     
-    def forcesMultivariateNorm(self, initcoords, r, mag, nRings = 1): # TODO: include distances to nucleoplasmic ring 
+    def forcesMultivariateNorm(self, initcoords, r, mag, nRings = 1): # TODO: include distances in z
         '''
         Returns array of Forces that are later applied in radial direction to the NPC corners
         ## Input ## 
@@ -356,7 +356,7 @@ def Plot2D(solution, z = z, symmet = symmet, nConnect = nConnect,  linestyle = "
                     segments = np.concatenate([points[:-1],points[1:]], axis = 1)
                     lc = LineCollection(segments, cmap = 'plasma', norm=norm, zorder = 100)
                     lc.set_array(normvel[:, i])
-                    line = ax.add_collection(lc) # TODO will only be saved for the last ring 
+                    line = ax.add_collection(lc) # TODO will only be saved for the last ring TODO: is this TODO still up to date?
                        
             else: # monochrome trajectory
                 for i in range(symmet):
@@ -495,7 +495,7 @@ class AnimatedScatter(object):
         """Initial drawing of the scatter plot."""
 
         self.lines = []
-        for i in range(int(self.nRings*2 + self.symmet*self.nRings*self.nConnect)):   #TODO code for 4 rings!
+        for i in range(int(self.nRings*2 + self.symmet*self.nRings*self.nConnect)):   #TODO code for 4 rings only!
             if (i <= 1): # 0, 1: lower rings
                 self.lobj = self.ax.plot([], [], marker = "o", color = "gray", markerfacecolor = "gray", linestyle = "", markersize = 15) 
             elif (i > 1 and i <=3): #2, 3 upper rings
