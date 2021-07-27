@@ -22,7 +22,7 @@ import matplotlib.animation as animation
 
 ### Parameters
 symmet = 8      # Rotational symmetry of the NPC
-mag = 25        # Magnitude of deformation [nm]; 3 standard deviation -> 99.7 % of forces on a node lie within this range
+mag = 50        # Magnitude of deformation [nm]; 3 standard deviation -> 99.7 % of forces on a node lie within this range
 nConnect = 2    # Number of connected neighbour nodes in clock-wise and anti-clockwise direction
 nRings = 4      # Number of rings 
 r = [50, 54, 54, 50]
@@ -299,7 +299,7 @@ def ColourcodeZ(z, darkest = 0.1, brightest = 0.5):
 #### Plotting ####################################################################
 plt.rcParams.update({'font.size': 30})
 
-def Plot2D(solution, z = z, symmet = symmet, nConnect = nConnect,  linestyle = "-", trajectory = True, colourcode = True, anchorsprings = True, radialsprings = True, markersize = 20, forces = 0, showforce = False): # TODO 
+def Plot2D(solution, z = z, symmet = symmet, nConnect = nConnect,  linestyle = "-", trajectory = True, colourcode = True, anchorsprings = True, radialsprings = True, markersize = 20, forces = 0, showforce = False, legend = True): # TODO 
     '''
     solution: Output of solve_ivp
     symmet: number of nodes
@@ -312,7 +312,7 @@ def Plot2D(solution, z = z, symmet = symmet, nConnect = nConnect,  linestyle = "
     '''
         
     #trajectories = False 
-    fig, ax = plt.subplots(1, 1, figsize = (10, 10))
+    fig, ax = plt.subplots(1, 1, figsize = (12, 12))
     viewFrame = -1 # 0 is the first frame, -1 is the last frame  
     mainmarkercolor = ColourcodeZ(z)
     
@@ -370,7 +370,7 @@ def Plot2D(solution, z = z, symmet = symmet, nConnect = nConnect,  linestyle = "
                              dx = (forces2d[i, 0] - pos2D[0, i, 0]), 
                              dy = (forces2d[i, 1] - pos2D[0, i, 1]),
                              width = 0.7, color="blue")   
-    if(trajectory and colourcode):
+    if(trajectory and colourcode and legend):
         axcb = fig.colorbar(line, ax=ax)   
         axcb.set_label('velocity (a.u.)')
             
@@ -563,7 +563,7 @@ if __name__ == '__main__':
 
 XYoverTime(solution)
 Plotforces(fcoords, initcoords)
-Plot2D(solution, anchorsprings=False, radialsprings=False, trajectory=False)    
+Plot2D(solution, anchorsprings=True, radialsprings=True, trajectory=True, legend = False)    
 Plot3D(solution, z, symmet, nRings, viewFrame = -1)#, colour = ["black", "black", "gray", "gray"])
 #Export2CSV
 
