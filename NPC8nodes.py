@@ -288,7 +288,7 @@ def MultipleNPC(n = 5):
         zNPCs.append(tempz)
     return NPCs, zNPCs, maxr
 
-NPCs, zNPCs, maxr = MultipleNPC(n = 11)
+NPCs, zNPCs, maxr = MultipleNPC(n = 7)
 
 
 
@@ -315,6 +315,7 @@ def Pos2D(solution):
 
 
 def MultipleNPCs_coord(NPCs, zNPCs):
+    "Input is OdeResults for each NPC in a list. Output is just the final coordinates of each NPC"
     NPCscoord = np.zeros((symmet*nRings*len(NPCs), 4)) # number of nodes, dimensions + label
     i = 0
     for NPC in range(len(NPCs)):
@@ -329,14 +330,14 @@ NPCscoords = MultipleNPCs_coord(NPCs, zNPCs)
 
 
 def OffsetNPCs(NPCcoords, NPCs, maxr): # TODO
+    "Arrange NPCs on a grid by offsetting them a multiple of their radius maxr in x and y direction"
     n = len(NPCs)
-    ncols = math.ceil(np.sqrt(n))
+    # Determine the number of rows and columns needed. The last cells on the grid might stay empty
+    ncols = math.ceil(np.sqrt(n)) 
     nrows = math.ceil(n/ncols)
-    x = 0
-    y = 1
-    i = 0
-    
-    maxr = 0 # TODO remove
+    x = 0 #indexing x coordinate
+    y = 1 # indexing y coordinate
+    i = 0 # will get updated
 
     for row in range(ncols):
         for col in range(nrows):    
@@ -345,11 +346,7 @@ def OffsetNPCs(NPCcoords, NPCs, maxr): # TODO
                 NPCscoords[np.where(NPCscoords[:,3] == i), y]  += row*3*maxr          
                 i += 1
     return NPCcoords
-    #for row in range(ncols):
-        #for col in range(nrows):
-            # print(row*3*maxr, col*3*maxr)
-            # NPCscoords[:,x] = 
-            # NPCscoords[:,y] = 
+
 
 NPCoffset = OffsetNPCs(NPCscoords, NPCs, maxr)
 
@@ -513,7 +510,8 @@ def Export2CSV():
                 spamwriter.writerow(np.append(Pos2D(solution[ring])[-1,node], z[ring]))
     
 
-def ExportCSV_multiple():
+def ExportCSV_multiple(): 
+    "Export CSV file with offset"
     with open('/home/maria/Documents/NPCPython/DeformedNPCs_MT280721.csv', 'w', newline='') as csvfile:
             spamwriter = csv.writer(csvfile, delimiter=',',
                                     quotechar='|', quoting=csv.QUOTE_MINIMAL)  
