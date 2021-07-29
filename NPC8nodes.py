@@ -270,6 +270,37 @@ z = deformNPC.z
 r = deformNPC.r
 
 
+def MultipleNPCs(n = 25):
+    "Generae n deformed NPCs"
+    NPCs = []
+    zNPCs = []
+
+    for i in range(n):
+        deformNPC_temp = DeformNPC(nConnect, mag, symmet = symmet, nRings = nRings, r = r, ringAngles = ringAngles, z = z)
+        tempsolution = deformNPC_temp.solution
+        tempz = deformNPC_temp.z
+        NPCs.append(tempsolution)
+        zNPCs.append(tempz)
+    return NPCs, zNPCs
+
+NPCs, zNPCs = MultipleNPCs(n = 400)
+
+def MultipleNPCs_coord(NPCs, zNPCs):
+    "Input is OdeResults for each NPC in a list. Output is just the final coordinates of each NPC"
+    NPCxyzi = np.zeros((symmet*nRings*len(NPCs), 4)) # number of nodes, dimensions + label
+    global xy
+    i = 0
+    for NPC in range(len(NPCs)):
+        for ring in range(nRings):
+            for node in range(symmet):
+                xy_flat = NPCs[NPC][ring].y.T[-1, :2*symmet] # x,y coordinates of the last frame
+                xy = np.reshape(xy_flat, (symmet, 2)) # transform to 2D coords                
+                NPCxyzi[i] = np.append(xy[node], [zNPCs[NPC][ring], NPC])
+                i += 1
+    return NPCxyzi
+
+NPCxyzi = MultipleNPCs_coord(NPCs, zNPCs)
+
 ### Functions to help with plotting and CSV generation
 def Sol2D(solution):
     """
@@ -288,6 +319,9 @@ def Sol2D(solution):
 def Pos2D(solution):
     pos2D, vel2D = Sol2D(solution)
     return pos2D   
+
+
+
 
 
 def ColourcodeZ(z, darkest = 0.1, brightest = 0.5):
@@ -450,6 +484,18 @@ def Export2CSV():
                 spamwriter.writerow(np.append(Pos2D(solution[ring])[-1,node], z[ring]))
     
 
+def ExportCSV_multiple(): 
+    "Export CSV file with offset"
+    with open('/home/maria/Documents/NPCPython/DeformedNPCs_MT290721.csv', 'w', newline='') as csvfile:
+            spamwriter = csv.writer(csvfile, delimiter=',',
+                                    quotechar='|', quoting=csv.QUOTE_MINIMAL)  
+            spamwriter.writerow(["x", "y", "z", "particle"])
+            #for row in range(NPCscoords):
+            for i in range(len(NPCxyzi)):
+                
+                spamwriter.writerow([NPCxyzi[i,0], NPCxyzi[i,1], NPCxyzi[i,2], NPCxyzi[i,3].astype(int)])
+
+
 class AnimatedScatter(object):
     """An animated scatter plot using matplotlib.animations.FuncAnimation."""
     def __init__(self, solution, nRings, nConnect, symmet, r, randfs):
@@ -461,7 +507,7 @@ class AnimatedScatter(object):
         for i in range(self.nRings): # check framenumbers are consistent for each ring
             framenumbers.append(len(self.solution[i].t)) 
         if (len(set(framenumbers)) != 1):
-            warn("Number of timesteps for all ring must be the same in order to animate deformation.")
+            warn("Number of timesteps for all rings must be the same in order to animate deformation.")
             return
         if (nRings != 4):
             warn("Animation function works correctly only for 4 NPC rings at the moment.")
@@ -566,4 +612,4 @@ Plotforces(fcoords, initcoords)
 Plot2D(solution, anchorsprings=False, radialsprings=False, trajectory=False)    
 Plot3D(solution, z, symmet, nRings, viewFrame = -1)#, colour = ["black", "black", "gray", "gray"])
 #Export2CSV
-
+ExportCSV_multiple()
