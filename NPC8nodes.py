@@ -417,6 +417,8 @@ def Plotforces(fcoords, initcoords):
     global f
     f = np.concatenate(fcoords)
     initcoords = np.concatenate(initcoords)
+    global diff
+    diff = f - initcoords
     allnodes = len(initcoords)
     
     fig, ax1 = plt.subplots(1,1, figsize = (10, 10))
@@ -426,7 +428,10 @@ def Plotforces(fcoords, initcoords):
         dx = (f[i,0] - initcoords[i,0]), dy = (f[i,1] - initcoords[i,1]),
         width = 0.7, color="blue") 
     ax1.arrow(x = 0, y = 0, dx = (f.sum(axis = 0)[0])/len(f), dy = f.sum(axis = 0)[1]/len(f), 
-              width = 0.7, color="red") #TODO 
+              width = 0.7, color="green") #TODO 
+    # ax1.arrow(x = 0, y = 0, dx = (diff.sum(axis = 0)[0])/len(diff), dy = diff.sum(axis = 0)[1]/len(diff), 
+    #           width = 0.3, color="red") #TODO 
+
     
     fig2, ax2 = plt.subplots(1,1, figsize = (10,10))
     
@@ -434,16 +439,17 @@ def Plotforces(fcoords, initcoords):
     global dot
     scaled = np.zeros(f.shape)
     dot = np.zeros(len(f))
-    
+
     for i in range(allnodes):
-        dot[i] = np.dot((f[i] - initcoords[i]), f.sum(axis = 0)/len(f))#/np.linalg.norm(f.sum(axis = 0))**2 # TODO
-        scaled[i] = f[i]/dot[i]
+        dot[i] = np.dot(diff[i], diff.sum(axis = 0)/len(diff))#/np.linalg.norm(f.sum(axis = 0))**2 # TODO
+        scaled[i] = initcoords[i] + (diff[i] + ((diff[i]/np.linalg.norm(diff[i]) * dot[i])))
+        #scaled[i] = f[i]-((f[i]/np.linalg.norm(f[i])) * dot[i])
     
     for i in range(allnodes):
         ax2.arrow(x = initcoords[i,0], y = initcoords[i,1], 
         dx = (scaled[i,0] - initcoords[i,0]), dy = (scaled[i,1] - initcoords[i,1]),
         width = 0.7, color="blue") 
-    ax2.arrow(x = 0, y = 0, dx = (scaled.sum(axis = 0)[0])/nRings, dy = scaled.sum(axis = 0)[1]/nRings, 
+    ax2.arrow(x = 0, y = 0, dx = (scaled.sum(axis = 0)[0])/len(scaled), dy = scaled.sum(axis = 0)[1]/len(scaled), 
               width = 0.7, color="red") #TODO     
     
     plt.axis("scaled")
