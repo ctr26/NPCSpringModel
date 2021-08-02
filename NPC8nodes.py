@@ -24,10 +24,17 @@ import matplotlib.animation as animation
 symmet = 8      # Rotational symmetry of the NPC
 mag = 25        # Magnitude of deformation [nm]; 3 standard deviation -> 99.7 % of forces on a node lie within this range
 nConnect = 2    # Number of connected neighbour nodes in clock-wise and anti-clockwise direction
-nRings = 4      # Number of rings 
-r = [50, 54, 54, 50]
-ringAngles = [0, 0.2069, 0.2407, 0.4476]
-z = [0, 0, 50, 50]
+nRings = 1      # Number of rings. TODO: make nRings = 1 possible
+# r = [50, 54]
+# ringAngles = [0, 0.2069]
+# z = [0, 0]
+
+r = [50]
+ringAngles = [0]
+z = [0]
+# r = [50, 54, 54, 50]
+# ringAngles = [0, 0.2069, 0.2407, 0.4476]
+# z = [0, 0, 50, 50]
 
 class DeformNPC:
     def __init__(self, nConnect = 2, mag = 25, symmet = 8, nRings = 1, r = 0, ringAngles = 0, z = 0):
@@ -73,6 +80,7 @@ class DeformNPC:
             nConnect = int(np.floor(self.symmet/2))
             warn("Selected number of neighbours nConnect too large. nConnect has been changed to " + str(nConnect) + ".")
         
+
         if(len(r) != nRings or len(ringAngles) != nRings or len(z) != nRings):
             warn("r, ringAngles, and z must be of length nRings: " + str(nRings))
 
@@ -83,7 +91,7 @@ class DeformNPC:
             Lrests.append(self.springlengths(initcoord)) 
             Ks.append(self.springconstants())
             y0s.append(np.concatenate((initcoord.flatten(), np.zeros(2 * self.symmet)))) 
- 
+
         self.randfs = self.forcesMultivariateNorm(self.initcoords, r, mag, nRings = nRings) # generate random forces
   
         # Solve ODE, ring 1 - 4       
@@ -249,15 +257,7 @@ class DeformNPC:
         rng = np.random.default_rng() 
         F = rng.multivariate_normal(mean, cov)
          
-        # initmag = sum(abs(F))
-        
-        # if (initmag != 0):
-        #     F = nRings*mag/initmag * F
-        
-        if (nRings) == 1: # TODO: more general return statement 
-            return np.split(F, nRings)[0]
-        else:
-            return np.split(F, nRings)
+        return np.split(F, nRings)
 
 
 ### Instantiate DeformNPC
@@ -283,7 +283,7 @@ def MultipleNPCs(n = 25):
         zNPCs.append(tempz)
     return NPCs, zNPCs
 
-NPCs, zNPCs = MultipleNPCs(n = 400)
+NPCs, zNPCs = MultipleNPCs(n = 1)
 
 def MultipleNPCs_coord(NPCs, zNPCs):
     "Input is OdeResults for each NPC in a list. Output is just the final coordinates of each NPC"
@@ -414,7 +414,8 @@ def Plot2D(solution, z = z, symmet = symmet, nConnect = nConnect,  linestyle = "
 
 
 def Plotforces(fcoords, initcoords):  
-    fcoords = np.concatenate(fcoords)
+    global f
+    f = np.concatenate(fcoords)
     initcoords = np.concatenate(initcoords)
     allnodes = len(initcoords)
     
@@ -422,8 +423,29 @@ def Plotforces(fcoords, initcoords):
     
     for i in range(allnodes):
         ax1.arrow(x = initcoords[i,0], y = initcoords[i,1], 
-        dx = (fcoords[i,0] - initcoords[i,0]), dy = (fcoords[i,1] - initcoords[i,1]),
+        dx = (f[i,0] - initcoords[i,0]), dy = (f[i,1] - initcoords[i,1]),
         width = 0.7, color="blue") 
+    ax1.arrow(x = 0, y = 0, dx = (f.sum(axis = 0)[0])/nRings, dy = f.sum(axis = 0)[1]/nRings, 
+              width = 0.7, color="red") #TODO 
+    
+    fig2, ax2 = plt.subplots(1,1, figsize = (10,10))
+    
+    global scaled
+    global dot
+    scaled = np.zeros(f.shape)
+    dot = np.zeros(len(f))
+    
+    for i in range(allnodes):
+        dot[i] = np.dot(f[i], f.sum(axis = 0))/np.linalg.norm(f[i]*f.sum(axis = 0)) # TODO
+        scaled[i] = f[i]/dot[i]
+    
+    for i in range(allnodes):
+        ax2.arrow(x = initcoords[i,0], y = initcoords[i,1], 
+        dx = (scaled[i,0] - initcoords[i,0]), dy = (scaled[i,1] - initcoords[i,1]),
+        width = 0.7, color="blue") 
+    ax2.arrow(x = 0, y = 0, dx = (scaled.sum(axis = 0)[0])/nRings, dy = scaled.sum(axis = 0)[1]/nRings, 
+              width = 0.7, color="red") #TODO     
+    
     plt.axis("scaled")
 
 
@@ -609,7 +631,7 @@ if __name__ == '__main__':
 
 XYoverTime(solution)
 Plotforces(fcoords, initcoords)
-Plot2D(solution, anchorsprings=False, radialsprings=False, trajectory=False)    
+Plot2D(solution, anchorsprings=True, radialsprings=False, trajectory=True)    
 Plot3D(solution, z, symmet, nRings, viewFrame = -1)#, colour = ["black", "black", "gray", "gray"])
 #Export2CSV
 ExportCSV_multiple()
