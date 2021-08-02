@@ -425,7 +425,7 @@ def Plotforces(fcoords, initcoords):
         ax1.arrow(x = initcoords[i,0], y = initcoords[i,1], 
         dx = (f[i,0] - initcoords[i,0]), dy = (f[i,1] - initcoords[i,1]),
         width = 0.7, color="blue") 
-    ax1.arrow(x = 0, y = 0, dx = (f.sum(axis = 0)[0])/nRings, dy = f.sum(axis = 0)[1]/nRings, 
+    ax1.arrow(x = 0, y = 0, dx = (f.sum(axis = 0)[0])/len(f), dy = f.sum(axis = 0)[1]/len(f), 
               width = 0.7, color="red") #TODO 
     
     fig2, ax2 = plt.subplots(1,1, figsize = (10,10))
@@ -436,7 +436,7 @@ def Plotforces(fcoords, initcoords):
     dot = np.zeros(len(f))
     
     for i in range(allnodes):
-        dot[i] = np.dot(f[i], f.sum(axis = 0))/np.linalg.norm(f[i]*f.sum(axis = 0)) # TODO
+        dot[i] = np.dot((f[i] - initcoords[i]), f.sum(axis = 0)/len(f))#/np.linalg.norm(f.sum(axis = 0))**2 # TODO
         scaled[i] = f[i]/dot[i]
     
     for i in range(allnodes):
