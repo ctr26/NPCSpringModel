@@ -22,7 +22,7 @@ import matplotlib.animation as animation
 
 ### Parameters
 symmet = 8      # Rotational symmetry of the NPC
-mag = 25        # Magnitude of deformation [nm]; 3 standard deviation -> 99.7 % of forces on a node lie within this range
+mag = 50        # Magnitude of deformation [nm]; 3 standard deviation -> 99.7 % of forces on a node lie within this range
 nConnect = 2    # Number of connected neighbour nodes in clock-wise and anti-clockwise direction
 nRings = 1      # Number of rings. TODO: make nRings = 1 possible
 # r = [50, 54]
@@ -441,8 +441,8 @@ def Plotforces(fcoords, initcoords):
     dot = np.zeros(len(f))
 
     for i in range(allnodes):
-        dot[i] = np.dot(diff[i], diff.sum(axis = 0)/len(diff))#/np.linalg.norm(f.sum(axis = 0))**2 # TODO
-        scaled[i] = initcoords[i] + (diff[i] + ((diff[i]/np.linalg.norm(diff[i]) * dot[i])))
+        dot[i] = np.dot(diff[i], (diff.sum(axis = 0)/len(diff)))#/np.linalg.norm(f.sum(axis = 0))**2 # TODO
+        scaled[i] = initcoords[i] + 8*(diff[i]/dot[i])
         #scaled[i] = f[i]-((f[i]/np.linalg.norm(f[i])) * dot[i])
     
     for i in range(allnodes):
