@@ -439,10 +439,12 @@ def Plotforces(fcoords, initcoords):
     global dot
     scaled = np.zeros(f.shape)
     dot = np.zeros(len(f))
-
+    global drift
+    drift = diff.sum(axis = 0)
+             
     for i in range(allnodes):
-        dot[i] = np.dot(diff[i], (diff.sum(axis = 0)/len(diff))) # TODO
-        scaled[i] = initcoords[i] + (diff[i] - dot[i]*diff[i])
+        dot[i] = np.dot(diff[i], drift/8) # TODO
+        scaled[i] = initcoords[i] + ((diff[i] - (dot[i]/np.linalg.norm(diff[i]))*(diff[i]/np.linalg.norm(diff[i]))))
         #scaled[i] = f[i]-((f[i]/np.linalg.norm(f[i])) * dot[i])
     
     for i in range(allnodes):
