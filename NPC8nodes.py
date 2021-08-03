@@ -22,7 +22,7 @@ import matplotlib.animation as animation
 
 ### Parameters
 symmet = 8      # Rotational symmetry of the NPC
-mag = 50        # Magnitude of deformation [nm]; 3 standard deviation -> 99.7 % of forces on a node lie within this range
+mag = 40        # Magnitude of deformation [nm]; 3 standard deviation -> 99.7 % of forces on a node lie within this range
 nConnect = 2    # Number of connected neighbour nodes in clock-wise and anti-clockwise direction
 nRings = 1      # Number of rings. TODO: make nRings = 1 possible
 # r = [50, 54]
@@ -413,12 +413,53 @@ def Plot2D(solution, z = z, symmet = symmet, nConnect = nConnect,  linestyle = "
     plt.tight_layout()
 
 
+# def Plotforces(fcoords, initcoords):  
+#     global f
+#     global diff
+#     global scaled
+#     global dot
+#     global drift
+#     f = np.concatenate(fcoords)
+#     initcoords = np.concatenate(initcoords)
+#     allnodes = len(initcoords)
+    
+#     fig, ax1 = plt.subplots(1,1, figsize = (10, 10))
+    
+#     for i in range(allnodes):
+#         ax1.arrow(x = initcoords[i,0], y = initcoords[i,1], 
+#         dx = (f[i,0] - initcoords[i,0]), dy = (f[i,1] - initcoords[i,1]),
+#         width = 0.7, color="blue") 
+#     ax1.arrow(x = 0, y = 0, dx = (f.sum(axis = 0)[0])/len(f), dy = f.sum(axis = 0)[1]/len(f), 
+#               width = 0.7, color="green") #TODO 
+
+    
+#     fig2, ax2 = plt.subplots(1,1, figsize = (10,10))
+    
+#     diff = f - initcoords #  
+#     drift = diff.sum(axis = 0)         
+#     dot = np.dot(diff, drift/4)
+#     scaled = np.zeros(f.shape) # scaled forces
+     
+#     for i in range(allnodes):
+#         scaled[i] = initcoords[i] + ((diff[i] - (dot[i]/np.linalg.norm(diff[i]))*(diff[i]/np.linalg.norm(diff[i]))))
+#         #scaled[i] = f[i]-((f[i]/np.linalg.norm(f[i])) * dot[i])
+    
+#     for i in range(allnodes):
+#         ax2.arrow(x = initcoords[i,0], y = initcoords[i,1], 
+#         dx = (scaled[i,0] - initcoords[i,0]), dy = (scaled[i,1] - initcoords[i,1]),
+#         width = 0.7, color="blue") 
+#     ax2.arrow(x = 0, y = 0, dx = (scaled.sum(axis = 0)[0])/4, dy = scaled.sum(axis = 0)[1]/4, 
+#               width = 0.7, color="red") #TODO     
+    
+#     plt.axis("scaled")
+
 def Plotforces(fcoords, initcoords):  
     global f
+    global scaled
+    global dot
+    global drift
     f = np.concatenate(fcoords)
     initcoords = np.concatenate(initcoords)
-    global diff
-    diff = f - initcoords
     allnodes = len(initcoords)
     
     fig, ax1 = plt.subplots(1,1, figsize = (10, 10))
@@ -429,33 +470,32 @@ def Plotforces(fcoords, initcoords):
         width = 0.7, color="blue") 
     ax1.arrow(x = 0, y = 0, dx = (f.sum(axis = 0)[0])/len(f), dy = f.sum(axis = 0)[1]/len(f), 
               width = 0.7, color="green") #TODO 
-    # ax1.arrow(x = 0, y = 0, dx = (diff.sum(axis = 0)[0])/len(diff), dy = diff.sum(axis = 0)[1]/len(diff), 
-    #           width = 0.3, color="red") #TODO 
+    
+    ax1.plot(np.concatenate([f[:,0], [f[0,0]]]), np.concatenate([f[:,1], [f[0,1]]]))
+    plt.axis("scaled")
 
     
     fig2, ax2 = plt.subplots(1,1, figsize = (10,10))
     
-    global scaled
-    global dot
-    scaled = np.zeros(f.shape)
-    dot = np.zeros(len(f))
-    global drift
-    drift = diff.sum(axis = 0)
-             
-    for i in range(allnodes):
-        dot[i] = np.dot(diff[i], drift/8) # TODO
-        scaled[i] = initcoords[i] + ((diff[i] - (dot[i]/np.linalg.norm(diff[i]))*(diff[i]/np.linalg.norm(diff[i]))))
-        #scaled[i] = f[i]-((f[i]/np.linalg.norm(f[i])) * dot[i])
+    drift = f.sum(axis = 0)         
+    dot = np.dot(f, drift/4) # /4 because 8 force vectors, but force vectors in opposite direction are not linearly independent
+    scaled = np.zeros(f.shape) # scaled forces
+     
+    global fnorm
+    fnorm = f.T/np.linalg.norm(f, axis = 1)
+    scaled = f - ((dot/np.linalg.norm(f, axis = 1))*fnorm).T
+    # for i in range(allnodes):
+    #     scaled[i] = f[i] - (dot[i]/np.linalg.norm(f[i]))*(f[i]/np.linalg.norm(f[i]))
+
     
     for i in range(allnodes):
         ax2.arrow(x = initcoords[i,0], y = initcoords[i,1], 
         dx = (scaled[i,0] - initcoords[i,0]), dy = (scaled[i,1] - initcoords[i,1]),
         width = 0.7, color="blue") 
-    ax2.arrow(x = 0, y = 0, dx = (scaled.sum(axis = 0)[0])/len(scaled), dy = scaled.sum(axis = 0)[1]/len(scaled), 
+    ax2.arrow(x = 0, y = 0, dx = (scaled.sum(axis = 0)[0])/4, dy = scaled.sum(axis = 0)[1]/4, 
               width = 0.7, color="red") #TODO     
-    
+    ax2.plot(np.concatenate([scaled[:,0], [scaled[0,0]]]), np.concatenate([scaled[:,1], [scaled[0,1]]]))
     plt.axis("scaled")
-
 
 
 def XYoverTime(solution, symmet = symmet, nRings = nRings, linestyle = "-", legend = False): 
