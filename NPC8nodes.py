@@ -441,8 +441,8 @@ def Plotforces(fcoords, initcoords):
     dot = np.zeros(len(f))
 
     for i in range(allnodes):
-        dot[i] = np.dot(diff[i], (diff.sum(axis = 0)/len(diff)))#/np.linalg.norm(f.sum(axis = 0))**2 # TODO
-        scaled[i] = initcoords[i] + 8*(diff[i]/dot[i])
+        dot[i] = np.dot(diff[i], (diff.sum(axis = 0)/len(diff))) # TODO
+        scaled[i] = initcoords[i] + (diff[i] - dot[i]*diff[i])
         #scaled[i] = f[i]-((f[i]/np.linalg.norm(f[i])) * dot[i])
     
     for i in range(allnodes):
