@@ -1,0 +1,22 @@
+name:
+  npc
+channels:
+  - pytorch
+  - conda-forge
+  - anaconda
+dependencies:
+  - numpy
+  - scipy
+  - matplotlib
+  - seaborn
+  - cudatoolkit=10.2
+  - pytorch 
+  - torchvision
+  - torchaudio
+  - scikit-learn
+  - scipy
+  - black
+  - ipython
+  - ipykernel
+  - pip
+  - python
