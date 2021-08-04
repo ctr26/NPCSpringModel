@@ -1,0 +1,5 @@
+# NPCSpringModel
+
+install environment:
+
+    $ make
