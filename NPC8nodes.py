@@ -22,7 +22,7 @@ import matplotlib.animation as animation
 
 ### Parameters
 symmet = 8      # Rotational symmetry of the NPC
-mag = 40        # Magnitude of deformation [nm]; 3 standard deviation -> 99.7 % of forces on a node lie within this range
+mag = 50        # Magnitude of deformation [nm]; 3 standard deviation -> 99.7 % of forces on a node lie within this range
 nConnect = 2    # Number of connected neighbour nodes in clock-wise and anti-clockwise direction
 nRings = 1      # Number of rings. TODO: make nRings = 1 possible
 # r = [50, 54]
