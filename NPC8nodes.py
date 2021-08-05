@@ -24,10 +24,10 @@ import matplotlib.animation as animation
 symmet = 8      # Rotational symmetry of the NPC
 mag = 25        # Magnitude of deformation [nm]; 3 standard deviation -> 99.7 % of forces on a node lie within this range
 nConnect = 2    # Number of connected neighbour nodes in clock-wise and anti-clockwise direction
-nRings = 4      # Number of rings 
-r = [50, 54, 54, 50]
-ringAngles = [0, 0.2069, 0.2407, 0.4476]
-z = [0, 0, 50, 50]
+nRings = 1      # Number of rings 
+r = [50]#, 54, 54, 50]
+ringAngles = [0]#, 0.2069, 0.2407, 0.4476]
+z = [0]#, 0, 50, 50]
 
 class DeformNPC:
     def __init__(self, nConnect = 2, mag = 25, symmet = 8, nRings = 1, r = 0, ringAngles = 0, z = 0):
@@ -254,10 +254,7 @@ class DeformNPC:
         # if (initmag != 0):
         #     F = nRings*mag/initmag * F
         
-        if (nRings) == 1: # TODO: more general return statement 
-            return np.split(F, nRings)[0]
-        else:
-            return np.split(F, nRings)
+        return np.split(F, nRings)
 
 
 ### Instantiate DeformNPC
