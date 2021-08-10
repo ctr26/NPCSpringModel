@@ -27,7 +27,7 @@ from sklearn.gaussian_process.kernels import Matern
 
 ### Parameters
 symmet = 8      # Rotational symmetry of the NPC
-mag = 35        # Magnitude of deformation [nm]; 3 standard deviation -> 99.7 % of forces on a node lie within this range
+mag = 25        # Magnitude of deformation [nm]; 3 standard deviation -> 99.7 % of forces on a node lie within this range
 nConnect = 2    # Number of connected neighbour nodes in clock-wise and anti-clockwise direction
 nRings = 4      # Number of rings 
 r = [50, 54, 54, 50]
@@ -325,7 +325,7 @@ def MultipleNPC(n = 5):
         zNPCs.append(tempz)
     return NPCs, zNPCs, maxr
 
-NPCs, zNPCs, maxr = MultipleNPC(n = 625)
+NPCs, zNPCs, maxr = MultipleNPC(n = 16)
 
 
 
