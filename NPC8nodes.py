@@ -17,13 +17,17 @@ import seaborn as sns
 import csv
 import matplotlib.animation as animation
 import math
+import sklearn.metrics
+from sklearn.gaussian_process.kernels import RBF
+from sklearn.gaussian_process.kernels import Matern
+
 #from IPython.display import HTML
 #from matplotlib import rc
 #from matplotlib.patches import FancyArrowPatch
 
 ### Parameters
 symmet = 8      # Rotational symmetry of the NPC
-mag = 20        # Magnitude of deformation [nm]; 3 standard deviation -> 99.7 % of forces on a node lie within this range
+mag = 35        # Magnitude of deformation [nm]; 3 standard deviation -> 99.7 % of forces on a node lie within this range
 nConnect = 2    # Number of connected neighbour nodes in clock-wise and anti-clockwise direction
 nRings = 4      # Number of rings 
 r = [50, 54, 54, 50]
@@ -31,7 +35,7 @@ ringAngles = [0, 0.2069, 0.2407, 0.4476]
 z = [0, 0, 50, 50]
 
 class DeformNPC:
-    def __init__(self, nConnect = 2, mag = 25, symmet = 8, nRings = 1, r = 0, ringAngles = 0, z = 0):
+    def __init__(self, nConnect = 2, mag = 25, symmet = 8, nRings = 1, r = 0, ringAngles = 0, z = 0, seed = 0):
         '''
         Models deformed NPCs using solve_ivp based on a simple, rotationally symmetric node and spring model with deforming forces applied in xy direcion. 
         ### Input ###
@@ -52,6 +56,7 @@ class DeformNPC:
         z: z position of NPC rings
        
         '''
+        self.seed = seed
         self.solution = [] 
         self.symmet = symmet # Rotational symmetry of the NPC
         self.initcoords = [] # starting coordinates of nodes    
@@ -226,30 +231,62 @@ class DeformNPC:
         ## Returns ## 
         For each ring, an array of forces applied to each node
         '''
-
+        global AllD
+        global cov
+        global cov2
+        global sigma
+        global allcoords
+        global cov3
+        global cov4
+        global F, F2, F3, F4
         nodesTotal = self.symmet*nRings # total number of nodes over all rings 
         
         allcoords = np.asarray(initcoords) # separated by NPC rings
         allcoords = allcoords.reshape(nodesTotal, 2) # not separated by NPC rings 
         
         sigma = np.min(r) # free parameter of RBF kernel that outputs covariance of forces on two nodes based on their euclidean distance
-        
+     
         AllD = np.zeros((nodesTotal, nodesTotal)) # all distances between nodes
-        cov = np.zeros((nodesTotal, nodesTotal)) # covariance matrix based on which random forces on nodes are drawn 
-
         
+        
+        cov = np.zeros((nodesTotal, nodesTotal)) # covariance matrix based on which random forces on nodes are drawn 
+        
+        cov2 = np.zeros((nodesTotal, nodesTotal)) 
+        cov3 = np.zeros((nodesTotal, nodesTotal))
+        cov4 = np.zeros((nodesTotal, nodesTotal))
         for i in range(nodesTotal):
             for j in range(nodesTotal):
                 AllD[i, j] = np.linalg.norm(allcoords[i, :] - allcoords[j, :])
                 cov[i, j] = np.exp(-(AllD[i, j]**2 / (2*sigma**2))) # RBF
-            
+        cov2 = sklearn.metrics.pairwise.rbf_kernel(X = allcoords, gamma = 1/(2*sigma**2))
+         
+        kernel = 1.0 * RBF(sigma)#(1/(2*sigma**2))
+        cov3 = kernel.__call__(X = allcoords)
+        kernel2 = 1.0 * Matern(length_scale=sigma, nu = 1/2)
+        cov4 = kernel2.__call__(X = allcoords)
+        
+        #cov5 = cov + (np.random.random(size = (32, 32))/10**8)
+        
+        #cov3 = sklearn.gaussian_process.kernels.RBF(length_scale=1/(2*sigma**2), X = allcoords)
         mag = (mag/3)**2    # 3*SD to Var
         cov = mag * cov 
+        cov2 = mag * cov2
+        cov3 = mag * cov3
+        cov4 = mag * cov4
+        #cov5 = mag * cov5
         mean = list(np.zeros(nodesTotal)) # Mean of the normal distribution
                 
-        rng = np.random.default_rng() 
-        F = rng.multivariate_normal(mean, cov)
-         
+        rng = np.random.default_rng()#seed = self.seed) 
+        global u
+        global L
+        global v
+        u = rng.standard_normal(32)
+        L = np.linalg.cholesky(cov2)
+        F = L @ u
+
+        #cov2 = np.eye(32)
+        #F = rng.multivariate_normal(mean, cov2)
+        
         # initmag = sum(abs(F))
         
         # if (initmag != 0):
@@ -274,12 +311,12 @@ r = deformNPC.r
 
 # Multiple NPCs 
 def MultipleNPC(n = 5):
-    "Generae n deformed NPCs"
+    "Generate n deformed NPCs"
     NPCs = []
     zNPCs = []
     maxr = 0
     for i in range(n):
-        deformNPC_temp = DeformNPC(nConnect, mag, symmet = symmet, nRings = nRings, r = r, ringAngles = ringAngles, z = z)
+        deformNPC_temp = DeformNPC(nConnect, mag, symmet = symmet, nRings = nRings, r = r, ringAngles = ringAngles, z = z, seed = i)
         tempsolution = deformNPC_temp.solution
         tempz = deformNPC_temp.z
         if (max(deformNPC_temp.r) > maxr):
@@ -288,7 +325,7 @@ def MultipleNPC(n = 5):
         zNPCs.append(tempz)
     return NPCs, zNPCs, maxr
 
-NPCs, zNPCs, maxr = MultipleNPC(n = 7)
+NPCs, zNPCs, maxr = MultipleNPC(n = 625)
 
 
 
@@ -633,12 +670,14 @@ if __name__ == '__main__':
 
 #%matplotlib qt # Run in console if python doesn't show plot 
 
-XYoverTime(solution)
-Plotforces(fcoords, initcoords)
-Plot2D(solution, anchorsprings=True, radialsprings=True, trajectory=True, legend = False)    
-Plot3D(solution, z, symmet, nRings, viewFrame = -1)#, colour = ["black", "black", "gray", "gray"])
-Export2CSV()
-ExportCSV_multiple()
+#XYoverTime(solution)
+#Plotforces(fcoords, initcoords)
+#Plot2D(solution, anchorsprings=True, radialsprings=True, trajectory=True, legend = False)    
+#Plot3D(solution, z, symmet, nRings, viewFrame = -1)#, colour = ["black", "black", "gray", "gray"])
+#Export2CSV()
+#ExportCSV_multiple()
 
-plt.scatter(NPCoffset[:,0], NPCoffset[:,1])
-plt.axis("scaled")
+fig, ax = plt.subplots(1, 1, figsize = (12, 12))
+ax.set_title("mag " + str(mag))
+ax.scatter(NPCoffset[:,0], NPCoffset[:,1])
+ax.axis("scaled")
