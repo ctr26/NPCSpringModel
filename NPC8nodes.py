@@ -16,6 +16,7 @@ from warnings import warn
 import seaborn as sns
 import csv
 import matplotlib.animation as animation
+from sklearn.gaussian_process.kernels import RBF
 #from IPython.display import HTML
 #from matplotlib import rc
 #from matplotlib.patches import FancyArrowPatch
@@ -24,13 +25,14 @@ import matplotlib.animation as animation
 symmet = 8      # Rotational symmetry of the NPC
 mag = 25        # Magnitude of deformation [nm]; 3 standard deviation -> 99.7 % of forces on a node lie within this range
 nConnect = 2    # Number of connected neighbour nodes in clock-wise and anti-clockwise direction
-nRings = 1      # Number of rings 
-r = [50]#, 54, 54, 50]
-ringAngles = [0]#, 0.2069, 0.2407, 0.4476]
-z = [0]#, 0, 50, 50]
+
+r = [50, 54, 54, 50]
+ringAngles = [0, 0.2069, 0.2407, 0.4476]
+z = [0, 0, 50, 50]
+nRings = len(r)     # Number of rings. 
 
 class DeformNPC:
-    def __init__(self, nConnect = 2, mag = 25, symmet = 8, nRings = 1, r = 0, ringAngles = 0, z = 0):
+    def __init__(self, nConnect = 2, mag = 25, symmet = 8, r = 0, ringAngles = 0, z = 0):
         '''
         Models deformed NPCs using solve_ivp based on a simple, rotationally symmetric node and spring model with deforming forces applied in xy direcion. 
         ### Input ###
@@ -56,7 +58,7 @@ class DeformNPC:
         self.initcoords = [] # starting coordinates of nodes    
         self.fcoords = []    # Coordinates of forces 
         self.z = z # z coordinates (stays unchanged)
-        
+        nRings = len(r)
         damp = 1 # damping
         kr = 0.7 # spring constant of anchor spring 
         
@@ -73,7 +75,7 @@ class DeformNPC:
             nConnect = int(np.floor(self.symmet/2))
             warn("Selected number of neighbours nConnect too large. nConnect has been changed to " + str(nConnect) + ".")
         
-        if(len(r) != nRings or len(ringAngles) != nRings or len(z) != nRings):
+        if(len(ringAngles) != nRings or len(z) != nRings):
             warn("r, ringAngles, and z must be of length nRings: " + str(nRings))
 
         for i in range(nRings):  
@@ -232,33 +234,26 @@ class DeformNPC:
         allcoords = allcoords.reshape(nodesTotal, 2) # not separated by NPC rings 
         
         sigma = np.min(r) # free parameter of RBF kernel that outputs covariance of forces on two nodes based on their euclidean distance
-        
-        AllD = np.zeros((nodesTotal, nodesTotal)) # all distances between nodes
+
         cov = np.zeros((nodesTotal, nodesTotal)) # covariance matrix based on which random forces on nodes are drawn 
 
-        
-        for i in range(nodesTotal):
-            for j in range(nodesTotal):
-                AllD[i, j] = np.linalg.norm(allcoords[i, :] - allcoords[j, :])
-                cov[i, j] = np.exp(-(AllD[i, j]**2 / (2*sigma**2))) # RBF
+
+        kernel = 1.0 * RBF(sigma)#(1/(2*sigma**2))
+        cov = kernel.__call__(X = allcoords)
             
         mag = (mag/3)**2    # 3*SD to Var
         cov = mag * cov 
-        mean = list(np.zeros(nodesTotal)) # Mean of the normal distribution
-                
+
         rng = np.random.default_rng() 
-        F = rng.multivariate_normal(mean, cov)
-         
-        # initmag = sum(abs(F))
-        
-        # if (initmag != 0):
-        #     F = nRings*mag/initmag * F
+        u = rng.standard_normal(len(allcoords))
+        L = np.linalg.cholesky(cov) # cholesky decomposition since sampling using rng.multivariate_normal(mean, cov) is numerically unstable
+        F = L @ u        
         
         return np.split(F, nRings)
 
 
 ### Instantiate DeformNPC
-deformNPC = DeformNPC(nConnect, mag, symmet = symmet, nRings = nRings, r = r, ringAngles = ringAngles, z = z)
+deformNPC = DeformNPC(nConnect, mag, symmet = symmet, r = r, ringAngles = ringAngles, z = z)
 solution = deformNPC.solution
 fcoords = deformNPC.fcoords # coordinates of force vectors
 initcoords = deformNPC.initcoords # starting coordinates 
